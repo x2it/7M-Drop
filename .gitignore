@@ -1,0 +1,19 @@
+# 运行时数据（含用户上传的文件）
+data/
+
+# 含管理口令，绝不提交
+drop.config.json
+
+# 隧道客户端二进制，53MB，让使用者自己下载
+cloudflared.exe
+
+# 安装文档的提取产物
+install-doc/_fresh
+
+# 构建/调试残留
+*.bak
+.edge-tmp/
+.edge2/
+.edgeprof/
+.edge-cdp/
+.edge-cdp2/

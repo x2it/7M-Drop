@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['18', '20', '22', '24']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      # 构建本身带自检：会把前端段放进 vm 求值后逐个解析，
+      # 能拦住「模板字符串里裸换行导致下发脚本静默失效」这类问题
+      - name: 构建
+        run: node _build.js
+
+      - name: 语法检查
+        run: node --check server.js && node --check drop.js
+
+      - name: 启动服务
+        run: |
+          TOKEN=ci-admin SHARE_TOKEN=ci-guest TTL_HOURS=1 MAX_TOTAL_MB=200 \
+            node server.js > server.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8080/healthz && break
+            sleep 0.5
+          done
+
+      - name: 接口自测（26 项）
+        run: node selftest.js http://127.0.0.1:8080 ci-admin
+
+      - name: 权限自测（21 项）
+        run: node permtest.js http://127.0.0.1:8080 ci-admin ci-guest
+
+      - name: 大文件分片 + 完整性
+        run: node bigtest.js http://127.0.0.1:8080 ci-admin 12
+
+      - name: 失败时打印服务端日志
+        if: failure()
+        run: cat server.log
