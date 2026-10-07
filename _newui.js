@@ -5,14 +5,16 @@ const PAGE = [
   '<html lang="zh-CN">',
   '<head>',
   '<meta charset="utf-8">',
-  '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">',
+  '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">',
   '<meta name="theme-color" content="#008080">',
   '<meta name="apple-mobile-web-app-capable" content="yes">',
+  '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">',
   '<meta name="mobile-web-app-capable" content="yes">',
   '<meta name="robots" content="noindex,nofollow">',
   '<title>7喵快传</title>',
   '<link rel="icon" href="./favicon.ico">',
-  '<link rel="apple-touch-icon" href="./favicon.ico">',
+  '<link rel="apple-touch-icon" href="./icons/icon-192.png">',
+  '<link rel="manifest" href="./manifest.webmanifest">',
   '<link rel="stylesheet" href="./app.css">',
   '</head>',
   '<body>',
@@ -21,7 +23,10 @@ const PAGE = [
   '',
   '    <div class="titlebar">',
   '      <span class="tb-title">7喵快传</span>',
-  '      <button class="tb-mode" id="tbMode" type="button" title="查看当前链接的身份与权限">…</button>',
+  '      <span class="tb-actions">',
+  '        <button class="tb-btn tb-install" id="tbInstall" type="button" hidden aria-label="安装到桌面" title="安装到桌面">⬇</button>',
+  '        <button class="tb-mode" id="tbMode" type="button" title="查看当前链接的身份与权限">…</button>',
+  '      </span>',
   '    </div>',
   '',
   '    <div class="win-body">',
@@ -181,18 +186,45 @@ const CSS = `
   --sink:inset 1px 1px var(--sh),inset -1px -1px var(--hi),inset 2px 2px var(--dk),inset -2px -2px var(--lt);
   --groove:inset 1px 1px var(--dk),inset -1px -1px var(--hi),inset 2px 2px var(--sh),inset -2px -2px var(--lt);
 }
-html{-webkit-text-size-adjust:100%}
+html{-webkit-text-size-adjust:100%;overflow-x:hidden}
 html,body{margin:0;padding:0}
+/* ── 隐藏式滚动条：整页只保留一个滚动上下文，且不画滚动条轨道 ──
+   滚轮 / 触屏滑动照常可用；视觉上由窗口边框与页面留白承担"可滚"暗示。 */
+*{scrollbar-width:none;scrollbar-color:transparent transparent}
+::-webkit-scrollbar{width:0;height:0;display:none}
+::-webkit-scrollbar-button{display:none}
 body{
   background:var(--desk);
   color:var(--text);
   min-height:100dvh;
   font:13px/1.45 "MS Sans Serif",Tahoma,"SimSun","宋体","Microsoft YaHei",sans-serif;
   -webkit-tap-highlight-color:transparent;
+  /* 兜底：任何意外超宽元素都不产生横向滚动条 */
+  overflow-x:hidden;
+  max-width:100%;
+  /* 触屏：阻止下拉刷新/滚动链穿透，页面本体不上下弹动 */
+  overscroll-behavior-y:none;
+}
+/* 离线提示条：断网时如实告知当前展示的是缓存内容 */
+body[data-net="off"]::before{
+  content:'离线模式 · 正在显示已缓存内容';
+  display:block;background:var(--face);color:var(--dis);
+  box-shadow:var(--sink);font-size:11px;padding:4px 8px;text-align:center;
 }
 img,canvas,video{max-width:100%}
 button,input,textarea,select{font-family:inherit}
 [hidden]{display:none !important}
+
+/* ── 触屏基础层 ──
+   touch-action:manipulation 让浏览器放弃等待双击缩放，
+   从而消除点击延迟（移动端最常见的"点了没反应"感）；
+   按钮/图标同时禁止长按选中与系统菜单，避免打断操作。 */
+button,.tb-btn,.tb-mode,.row-more,.ico,.sb-panel.clickable,.sheet-item,.btn-like,.drop,.row.tappable{
+  touch-action:manipulation;
+  -webkit-user-select:none;user-select:none;
+  -webkit-touch-callout:none;
+}
+input,textarea{touch-action:auto}
 
 .desk{
   min-height:100dvh;
@@ -223,6 +255,9 @@ button,input,textarea,select{font-family:inherit}
 }
 .tb-mode:hover{background:rgba(255,255,255,.20);border-color:rgba(255,255,255,.40)}
 .tb-mode:active{box-shadow:none;padding:2px 8px;background:rgba(255,255,255,.30)}
+/* 标题栏右侧动作区：安装按钮 + 模式按钮 */
+.tb-actions{display:flex;align-items:center;gap:5px;flex:none}
+.tb-install{font-size:12px;font-weight:700}
 .tb-btn{
   width:19px;height:17px;min-height:0;padding:0;flex:none;
   display:grid;place-items:center;font-size:10px;font-weight:700;line-height:1;
@@ -301,21 +336,33 @@ textarea:focus{outline:none}
 fieldset.panel{
   border:1px solid var(--sh);border-right-color:var(--hi);border-bottom-color:var(--hi);
   margin:12px 0 0;padding:9px 8px 8px;position:relative;
+  /* fieldset 默认 min-inline-size:min-content 会阻止收缩并撑破窄屏，
+     必须显式归零，否则移动端会出现横向溢出 */
+  min-inline-size:0;min-width:0;
 }
 fieldset.panel legend{
   font-size:12px;font-weight:700;padding:0 6px;margin-left:2px;
+  /* 长文字图例同样会撑破窄屏 */
+  max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
 #filesCount{font-weight:400;color:#404040;margin-left:5px}
-.panel-tools{position:absolute;top:-2px;right:8px}
-.panel-tools button{font-size:11.5px;padding:2px 9px;min-height:22px}
+.panel-tools{position:absolute;top:-2px;right:8px;display:flex;gap:4px}
+.panel-tools button{font-size:11.5px;padding:2px 9px;min-height:22px;position:relative}
 .panel-tools button:active{padding:3px 8px 1px 10px}
+/* 触屏：热区向下扩展补足高度（按钮本身不能被 top 偏移裁切） */
+.panel-tools button::after{
+  content:'';position:absolute;left:50%;top:50%;
+  width:100%;min-width:48px;height:44px;transform:translate(-50%,-50%);
+}
 
-.list{list-style:none;margin:8px 0 0;padding:2px;background:var(--win);box-shadow:var(--sink);
-  max-height:52vh;overflow:auto;overflow-x:hidden}
+/* 文件列表不再自带内部滚动（旧版列表有高度上限 + overflow 会形成
+   "页面滚动条 + 列表滚动条" 两级嵌套）：列表自然撑开，整页只滚一次。 */
+.list{list-style:none;margin:8px 0 0;padding:2px;background:var(--win);box-shadow:var(--sink)}
 .row{
   display:flex;align-items:center;gap:9px;
   padding:7px 6px;
   border-bottom:1px dotted #b0b0b0;
+  min-width:0;
 }
 .row:last-child{border-bottom:0}
 .row.tappable{cursor:pointer}
@@ -329,14 +376,21 @@ fieldset.panel legend{
   background:var(--win);box-shadow:var(--sink);
   font:700 9.5px/1 Tahoma,Arial,sans-serif;letter-spacing:.5px;color:var(--title);
   text-transform:uppercase;
-}
-.meta{min-width:0;flex:1}
-.fname{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.fsub{color:#505050;font-size:11px;margin-top:3px;display:flex;gap:8px;flex-wrap:wrap}
+}.meta{min-width:0;flex:1}
+.fname{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.fsub{color:#505050;font-size:11px;margin-top:3px;display:flex;gap:8px;flex-wrap:wrap;
+  min-width:0;overflow-wrap:anywhere}
 .row-more{
   width:30px;height:30px;min-height:0;padding:0;flex:none;
   display:grid;place-items:center;font-size:15px;line-height:1;
   background:var(--face);color:var(--text);box-shadow:var(--raise);
+  position:relative;
+}
+/* 触屏：视觉仍是 30px 小按钮，但热区向四周扩展到约 48px，
+   兼顾复古观感与手指可点性（不改变布局，用 ::after 扩大命中区） */
+.row-more::after{
+  content:'';position:absolute;left:50%;top:50%;
+  width:48px;height:48px;transform:translate(-50%,-50%);
 }
 .row-more:active{box-shadow:var(--sink);padding:0}
 .empty{color:#404040;font-size:12px;text-align:center;padding:20px 0;margin:0;
@@ -350,6 +404,7 @@ fieldset.panel legend{
   padding:2px 6px;font-size:11px;
   background:var(--face);box-shadow:var(--sink);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  display:flex;align-items:center;min-height:19px;
 }
 .sb-panel:first-child{flex:0 0 auto}
 
@@ -376,7 +431,7 @@ fieldset.panel legend{
 /* 注意：这里必须叠在 .mask 上，单独写 .viewer 会丢掉 position:fixed，
    弹层会变成文档流里的普通块，表现为「点了没反应」。 */
 .viewer{background:rgba(0,0,0,.74);z-index:85}
-.viewer .viewer-dlg{width:min(920px,100%);height:min(88dvh,100%)}
+.viewer .viewer-dlg{width:min(920px,100%);height:min(88dvh,100%);will-change:transform}
 .viewer-body{
   flex:1;min-height:0;background:#000;box-shadow:var(--sink);margin:3px;
   display:grid;place-items:center;overflow:auto;-webkit-overflow-scrolling:touch;
@@ -458,28 +513,136 @@ fieldset.panel legend{
   box-shadow:var(--raise);max-width:90vw;text-align:center;
 }
 
-@media (max-width:560px){
+/* ══ 触屏设备（手机/平板）：保证 44px 触控标准 ══
+   Apple HIG 与 Material 均建议可点区域 ≥44×44。
+   窄屏空间紧张，采用"视觉尺寸适度缩小、热区补足"的策略：
+   按钮本体撑到 ≥44px 高，图标类用 ::after 扩热区，避免挤压排版。*/
+@media (pointer:coarse), (max-width:560px){
   .desk{padding:calc(7px + var(--safe-t)) calc(7px + var(--safe-r)) calc(7px + var(--safe-b)) calc(7px + var(--safe-l))}
   .win-body{padding:8px 7px 7px}
-  .list{max-height:46vh}
   .sb-mid{display:none}
   .viewer .viewer-dlg{height:min(94dvh,100%)}
   .dialog{max-height:100%}
-  .toolbar button,.btnrow button{font-size:11.5px;padding:6px 4px}
-  .row-more{width:28px;height:28px}
-  .ico{width:30px;height:27px;font-size:9px}
+
+  /* 工具栏 / 按钮行：撑到 44px 高，字号保持可读 */
+  .toolbar{gap:6px;margin-bottom:10px}
+  .toolbar button{font-size:12px;padding:8px 6px;min-height:44px}
+  .btnrow{gap:6px;margin-top:8px}
+  .btnrow button{font-size:12px;padding:8px 6px;min-height:44px}
+
+  /* 标题栏按钮：触屏撑到 44px 热区，标题栏相应加高 */
+  .titlebar{min-height:44px;padding:5px 5px 5px 8px}
+  .tb-mode{font-size:12px;padding:6px 12px;min-height:34px;position:relative}
+  .tb-mode::after{content:'';position:absolute;left:0;top:50%;width:100%;height:44px;transform:translateY(-50%)}
+  .tb-btn{width:38px;height:34px;font-size:13px;position:relative}
+  .tb-btn::after{content:'';position:absolute;left:50%;top:50%;width:44px;height:44px;transform:translate(-50%,-50%)}
+
+  /* 刷新按钮：热区补足（见 ::after 规则） */
+  .panel-tools{top:-4px;right:6px}
+  .panel-tools button{font-size:12px;padding:6px 12px;min-height:30px}
+
+  /* 列表行：整体加高，让整行成为可点热区 */
+  .row{gap:9px;padding:11px 7px;min-height:56px}
+  .row-more{width:32px;height:32px;font-size:16px}
+  .ico{width:32px;height:29px;font-size:9px}
+
+  /* 状态栏：可点面板撑到 44px 高 */
+  .statusbar{padding:4px}
+  .sb-panel{min-height:44px;padding:4px 8px;font-size:11.5px}
+
+  /* 页脚外链：扩大可点区域 */
+  .footer{padding:10px 6px 8px}
+  .footer a{display:inline-block;padding:8px 6px;min-height:32px}
+
+  /* 图例让位给刷新按钮，避免重叠 */
+  fieldset.panel legend{padding-right:76px}
+  .fsub{gap:5px 10px}
+
+  /* 操作面板（底部弹出）：条目撑到 48px，拇指友好 */
+  .sheet-dlg{margin-bottom:calc(4px + var(--safe-b))}
+  .sheet-item{min-height:48px;padding:12px 14px;font-size:14px}
+
+  /* 预览页脚按钮 */
+  .viewer-foot{gap:6px;padding:6px}
+  .viewer-foot>*{min-height:44px}
+
+  /* 输入框：字号 ≥16px 可避免 iOS 聚焦时自动放大页面 */
+  textarea{font-size:16px;min-height:96px}
+}
+
+/* 极窄屏（≤400px）：只压字号与间距，不再缩小触控目标 */
+@media (max-width:400px){
+  .toolbar button,.btnrow button{font-size:11.5px;padding:8px 4px;min-height:44px}
+  .row{gap:8px;padding:10px 6px;min-height:54px}
+  .row-more{width:30px;height:30px}
+  .ico{width:30px;height:27px;font-size:8.5px}
+  fieldset.panel legend{padding-right:72px}
+  .sb-panel{font-size:11px;padding:4px 6px}
+}
+
+/* 支持悬停的精确指针设备（桌面鼠标）才启用 hover 高亮 */
+@media (hover:hover) and (pointer:fine){
+  .row.tappable:hover{background:var(--sel);color:#fff}
 }
 @media (hover:none){
   .row:hover{background:transparent;color:var(--text)}
   .row:hover .fsub{color:#505050}
   .row:hover .ico{color:var(--title)}
   .row:hover .row-more{color:var(--text)}
+  /* 触屏用按下态代替 hover，给出明确点击反馈 */
+  .row.tappable:active{background:var(--sel);color:#fff}
+  .row.tappable:active .fsub{color:#d0d0d0}
+  .row.tappable:active .ico{color:#fff}
+  .row.tappable:active .row-more{color:#fff}
+  button:active,.btn-like:active{background:#b8b8b8}
+}
+
+/* ── 嵌入模式 (?embed=1) ──
+   桌面把本页嵌进 iframe 当一个"窗口"用。此时外层已经提供了 95 的窗框、
+   标题栏和背景，本页必须"脱壳"：让出内边距、去掉投影和宽度限制，
+   否则会出现"窗中窗"两层边框叠在一起。背景改透明，桌面底色自然透进来。 */
+body.embed{background:transparent;overflow:hidden;height:100vh;height:100dvh}
+body.embed[data-net="off"]::before{display:none}
+body.embed .desk{min-height:0;height:100%;padding:0;display:block}
+body.embed .window{
+  max-width:none;width:100%;height:100%;
+  box-shadow:none;padding:0;
+  display:flex;flex-direction:column;
+}
+body.embed .titlebar{display:none}
+body.embed .footer{display:none}
+body.embed .win-body{
+  flex:1;min-height:0;overflow-y:auto;
+  -webkit-overflow-scrolling:touch;overscroll-behavior:contain;
 }
 `;
 
 const APP_JS = `
 (function () {
   'use strict';
+
+  // ── 嵌入模式 (?embed=1) ──
+  // 桌面把本页当"窗口内容"嵌进来。此时：
+  //   1) 打上 body.embed，让 CSS 把窗框/内边距/投影全部让出去；
+  //   2) **不注册 Service Worker** —— 外层根桌面已经有一个 SW，
+  //      同源再注册一个会让两套 fetch 缓存策略互相打架；而且 embed 页面
+  //      本来就不是一个独立的"应用"，离线能力由外层负责。
+  //   3) 不触发安装提示（外层桌面才是可安装的那个应用）。
+  var EMBED = /[?&]embed=1(&|$)/.test(location.search);
+  if (EMBED) {
+    document.body.classList.add('embed');
+    try { document.documentElement.setAttribute('data-embed', '1'); } catch (e) {}
+  }
+
+  // 移动浏览器"桌面版网页"模式防御：触屏小屏设备 + 布局视口被拉到桌面宽(>=700)
+  // 时，动态改写 viewport 强制回设备宽度。桌面/平板不受影响。
+  try {
+    var touch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+    if (touch && window.screen.width <= 480 && document.documentElement.clientWidth >= 700) {
+      var mv = document.querySelector('meta[name="viewport"]');
+      if (mv) mv.setAttribute('content', 'width=device-width,initial-scale=1,viewport-fit=cover');
+    }
+  } catch (e) {}
 
   // 注意：不能直接用整段 pathname —— 分享链接形如 /s/<口令>/f/<id>，
   // 用整段会把 API 前缀算错（/api/list 直接 404，列表加载不出来）。
@@ -584,6 +747,42 @@ const APP_JS = `
   function absUrl(rel) { return location.origin + BASE + rel; }
   function fileUrl(it) { return absUrl('/d/' + it.id); }
   function viewUrl(it) { return absUrl('/v/' + it.id); }
+
+  /* ── PWA：缩略图生成 ──
+     预览图片时顺手用 canvas 生成 ≤256px 的 JPEG 缩略图，交给 SW 写进
+     Cache Storage（Cache API 只能在 SW 侧写，postMessage 是官方通道）。
+     视频/大图/SVG 一律跳过：控制缓存体积，也避免无谓的解码开销。 */
+  function makeThumb(it) {
+    if (!it || !it.id) return;
+    var t = String(it.type || '').toLowerCase();
+    if (t.indexOf('image/') !== 0) return;
+    if (t.indexOf('image/svg') === 0) return;
+    if (it.size > 4 * 1024 * 1024) return;
+    if (!(navigator.serviceWorker && navigator.serviceWorker.controller)) return;
+
+    var im = new Image();
+    im.decoding = 'async';
+    im.onload = function () {
+      try {
+        var MAX = 256;
+        var w = im.naturalWidth, h = im.naturalHeight;
+        if (!w || !h) return;
+        var s = Math.min(1, MAX / Math.max(w, h));
+        var cw = Math.max(1, Math.round(w * s));
+        var ch = Math.max(1, Math.round(h * s));
+        var cv = document.createElement('canvas');
+        cv.width = cw; cv.height = ch;
+        cv.getContext('2d').drawImage(im, 0, 0, cw, ch);
+        var done = function (blob) {
+          if (blob) navigator.serviceWorker.controller.postMessage(
+            { type: 'thumb', id: it.id, blob: blob });
+        };
+        if (cv.toBlob) cv.toBlob(done, 'image/jpeg', 0.72);
+      } catch (e) { /* 忽略：缩略图是纯增量优化 */ }
+    };
+    im.onerror = function () { /* 忽略 */ };
+    im.src = viewUrl(it);
+  }
   // 分享用的「文件页」：打开先预览，页面内有下载按钮。
   // 对图片/PDF 这类文件，直接把 /d/ 直链发出去会强制下载，体验很差。
   function filePageUrl(it) { return absUrl('/f/' + it.id); }
@@ -770,6 +969,7 @@ const APP_JS = `
       var img = document.createElement('img');
       img.src = viewUrl(it); img.alt = it.name;
       viewerBody.appendChild(img);
+      makeThumb(it);
     } else if (kind === 'video') {
       var v = document.createElement('video');
       v.src = viewUrl(it); v.controls = true; v.autoplay = true;
@@ -832,6 +1032,40 @@ const APP_JS = `
   viewer.addEventListener('click', function (e) {
     if (e.target === viewer) closeViewer();
   });
+  /* 移动端：预览浮层下滑关闭（手机上最自然的手势）。
+     只在内容未滚动到顶部、且纵向位移明显时触发，避免与内部滚动打架。 */
+  (function swipeDownToClose() {
+    var y0 = 0, x0 = 0, dragging = false, moved = false;
+    var dlg = viewer.querySelector('.viewer-dlg');
+    var body = $('viewerBody');
+    viewer.addEventListener('touchstart', function (e) {
+      if (e.touches.length !== 1) return;
+      y0 = e.touches[0].clientY; x0 = e.touches[0].clientX;
+      dragging = true; moved = false;
+    }, { passive: true });
+    viewer.addEventListener('touchmove', function (e) {
+      if (!dragging || e.touches.length !== 1) return;
+      var dy = e.touches[0].clientY - y0;
+      var dx = e.touches[0].clientX - x0;
+      if (Math.abs(dy) <= Math.abs(dx)) return;             // 横向滑动 = 切换上一个/下一个
+      var atTop = !body || body.scrollTop <= 0;
+      if (dy > 0 && atTop) {
+        moved = true;
+        if (dlg) dlg.style.transform = 'translateY(' + Math.min(dy, 140) + 'px)';
+      }
+    }, { passive: true });
+    function end(e) {
+      if (!dragging) return;
+      dragging = false;
+      var dy = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0].clientY - y0 : 0;
+      if (dlg) { dlg.style.transition = 'transform .18s ease'; dlg.style.transform = ''; }
+      setTimeout(function () { if (dlg) dlg.style.transition = ''; }, 200);
+      if (moved && dy > 90) closeViewer();
+      moved = false;
+    }
+    viewer.addEventListener('touchend', end, { passive: true });
+    viewer.addEventListener('touchcancel', end, { passive: true });
+  })();
 
   // ── 二维码 ─────────────────────────────────────────────
   function openQR(text, title) {
@@ -1127,6 +1361,135 @@ const APP_JS = `
     }
   });
 
+  /* ───────────── 触屏增强 ───────────── */
+  var isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+
+  if (isTouch) {
+    // 1) 滑动防误触：手指在滚动列表上滑动后抬起，不应触发该行的"点击进预览"。
+    //    以 touchstart 起点为基准，位移超过阈值即判定为滚动，屏蔽随后的 click。
+    var MOVE_TOL = 10; // px
+    var tStart = null, tMoved = false;
+    document.addEventListener('touchstart', function (e) {
+      if (e.touches.length !== 1) { tStart = null; return; }
+      tStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      tMoved = false;
+    }, { passive: true });
+    document.addEventListener('touchmove', function (e) {
+      if (!tStart || e.touches.length !== 1) return;
+      var dx = Math.abs(e.touches[0].clientX - tStart.x);
+      var dy = Math.abs(e.touches[0].clientY - tStart.y);
+      if (dx > MOVE_TOL || dy > MOVE_TOL) tMoved = true;
+    }, { passive: true });
+    // 捕获阶段拦截：一旦判定为滑动，吃掉这次 click
+    document.addEventListener('click', function (e) {
+      if (!tMoved) return;
+      tMoved = false;
+      e.stopPropagation();
+      e.preventDefault();
+    }, true);
+
+    // 2) 遮罩层整片可点关闭：给弹层加一个更大的"点击背景关闭"区域，
+    //    手机上没有 ESC 键，背景关闭是最自然的手势。
+    [viewer, qrModal, $('infoModal'), sheet].forEach(function (layer) {
+      if (!layer) return;
+      layer.addEventListener('touchend', function (e) {
+        // 仅当手指本身落在遮罩（不是对话框内部）时才关闭
+        if (e.target !== layer) return;
+        var t = e.changedTouches && e.changedTouches[0];
+        if (!t) return;
+        var el = document.elementFromPoint(t.clientX, t.clientY);
+        if (el === layer) {
+          if (layer === sheet) closeSheet();
+          else if (layer === viewer) closeViewer();
+          else layer.hidden = true;
+        }
+      }, { passive: true });
+    });
+
+    // 3) 双击缩放抑制：桌面版网页模式下，双击常被误判为缩放，
+    //    对按钮/列表这类交互元素直接屏蔽后续双击。
+    document.addEventListener('dblclick', function (e) {
+      var t = e.target;
+      if (t.closest && t.closest('button,.row-more,.ico,.tappable,.sheet-item')) e.preventDefault();
+    }, { passive: false });
+
+    // 4) 可视区域变化（手机键盘弹出/收起）时，让输入区滚动到可见位置，
+    //    否则 iOS 聚焦输入框后会被键盘完全遮住。
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', function () {
+        var ta = $('textInput');
+        if (!document.activeElement || document.activeElement !== ta) return;
+        var pane = $('textPane');
+        if (pane && !pane.hidden) {
+          setTimeout(function () { pane.scrollIntoView({ block: 'center', behavior: 'smooth' }); }, 120);
+        }
+      });
+    }
+  }
+
+  /* ───────────── PWA：SW 注册 / 安装按钮 / 离线状态 ───────────── */
+  // 注册 Service Worker（./sw.js 相对 <base> 解析为 /s/<口令>/sw.js，
+  // 作用域天然落在本口令目录内，不影响其他口令与首页）。
+  // embed 模式下跳过：外层桌面已有自己的 SW，同源双注册会互相打架。
+  if (!EMBED && 'serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('./sw.js', { scope: './' })
+        .catch(function () { /* SW 失败不影响页面正常使用 */ });
+    });
+  }
+
+  // 安装按钮：Chromium 系捕获 beforeinstallprompt 后走原生安装流程；
+  // iOS Safari 没有该事件，点击时如实给出「添加到主屏幕」的手动引导。
+  var deferredPrompt = null;
+  var installBtn = EMBED ? null : $('tbInstall');
+
+  window.addEventListener('beforeinstallprompt', function (e) {
+    e.preventDefault();
+    deferredPrompt = e;
+    if (installBtn) installBtn.hidden = false;
+  });
+
+  if (installBtn) {
+    installBtn.addEventListener('click', function () {
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        deferredPrompt.userChoice.then(function () {
+          deferredPrompt = null;
+          installBtn.hidden = true;
+        }).catch(function () {});
+        return;
+      }
+      toast('iOS：点浏览器底部「分享」→「添加到主屏幕」');
+    });
+  }
+
+  window.addEventListener('appinstalled', function () {
+    deferredPrompt = null;
+    if (installBtn) installBtn.hidden = true;
+    toast('已安装到桌面');
+  });
+
+  // iOS：无 beforeinstallprompt 事件，但未以独立模式运行时也亮出按钮做引导
+  var standalone = window.matchMedia('(display-mode: standalone)').matches ||
+    navigator.standalone === true;
+  if (installBtn && !standalone && /iphone|ipad|ipod/i.test(navigator.userAgent)) {
+    installBtn.hidden = false;
+  }
+
+  // 离线状态条：断网时 body[data-net=off] 顶部如实提示当前是缓存内容
+  function paintNet() {
+    document.body.setAttribute('data-net', navigator.onLine ? 'on' : 'off');
+  }
+  window.addEventListener('online', function () { paintNet(); lastSig = ''; load(); });
+  window.addEventListener('offline', paintNet);
+  paintNet();
+
+  // 嵌入模式下向桌面外层报到：外层据此收起"正在载入"遮罩。
+  // 用 '*' 而不指定 origin：同源 iframe，且外层只需要知道"好了"。
+  if (EMBED) {
+    try { window.parent.postMessage({ type: 'drop-ready' }, '*'); } catch (e) {}
+  }
+
   load();
   setInterval(function () {
     if (!pending && viewer.hidden && sheet.hidden && qrModal.hidden && $('infoModal').hidden) load();
@@ -1137,13 +1500,104 @@ const APP_JS = `
 // 由 build 脚本注入 qr.js 的完整源码（已用真实解码器 jsQR 验证：11/11 通过）
 const QR_JS = `__QR_JS__`;
 
-const FAVICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">' +
+
+const FAVICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" shape-rendering="crispEdges">' +
   '<rect width="32" height="32" fill="#008080"/>' +
-  '<rect x="3" y="4" width="26" height="24" fill="#c0c0c0"/>' +
-  '<rect x="3" y="4" width="26" height="5" fill="#000080"/>' +
-  '<rect x="4" y="5" width="24" height="3" fill="none"/>' +
-  '<rect x="5" y="12" width="22" height="14" fill="#ffffff"/>' +
-  '<rect x="5" y="12" width="22" height="14" fill="none" stroke="#808080" stroke-width="1"/>' +
-  '<path d="M9 16h12M9 19h12M9 22h7" stroke="#000080" stroke-width="1.4"/>' +
-  '<rect x="24" y="5" width="4" height="3" fill="#c0c0c0" stroke="#000" stroke-width="0.7"/>' +
+  // Win95 四色旗：斜切平行四边形（顶边比底边右移 4 = 飘动感），黑描边硬像素
+  '<path d="M6 5 L14 5 L10 14 L2 14 Z" fill="#d4000a" stroke="#0a0a0a" stroke-width="1"/>' +
+  '<path d="M18 3 L26 3 L22 12 L14 12 Z" fill="#007c30" stroke="#0a0a0a" stroke-width="1"/>' +
+  '<path d="M5 18 L13 18 L9 27 L1 27 Z" fill="#0050be" stroke="#0a0a0a" stroke-width="1"/>' +
+  '<path d="M17 16 L25 16 L21 25 L13 25 Z" fill="#ffd500" stroke="#0a0a0a" stroke-width="1"/>' +
   '</svg>';
+
+// ───────────────── PWA Service Worker ─────────────────
+// 作用域 = SW 自身所在目录（/s/<口令>/），天然按口令隔离，首页不受影响。
+// 策略：外壳 cache-first（离线可开）、导航 network-first（断网回退壳）、
+// /api/* /v/* /d/* 一律 network-only（列表必须实时、私人文件不进缓存）。
+// 注意：本模板串内禁止出现反引号与 ${（与 QR_JS 同一构建纪律）。
+const SW_JS = `
+'use strict';
+var VERSION = '__BUILD_ID__';
+var SHELL_CACHE = 'drop-shell-' + VERSION;
+var THUMB_CACHE = 'drop-thumb-' + VERSION;
+var SHELL = ['./', './app.css', './app.js', './qr.js', './favicon.ico', './manifest.webmanifest'];
+
+self.addEventListener('install', function (e) {
+  e.waitUntil(
+    caches.open(SHELL_CACHE).then(function (c) {
+      return Promise.all(SHELL.map(function (u) {
+        return c.add(u).catch(function () {});
+      }));
+    }).then(function () { return self.skipWaiting(); })
+  );
+});
+
+self.addEventListener('activate', function (e) {
+  var keep = [SHELL_CACHE, THUMB_CACHE];
+  e.waitUntil(
+    caches.keys().then(function (keys) {
+      return Promise.all(keys.map(function (k) {
+        if (keep.indexOf(k) < 0) return caches.delete(k);
+      }));
+    }).then(function () { return self.clients.claim(); })
+  );
+});
+
+// 页面预览图片后会送来 canvas 生成的缩略图（≤256px JPEG），写进专用缓存。
+// cache key 用 /thumb/<id>，与原图 /v/<id> 完全隔离，绝不污染原图预览。
+self.addEventListener('message', function (e) {
+  var d = e.data;
+  if (!d || d.type !== 'thumb' || !d.id || !d.blob) return;
+  e.waitUntil(
+    caches.open(THUMB_CACHE).then(function (c) {
+      return c.put('/thumb/' + d.id, new Response(d.blob, {
+        headers: { 'Content-Type': d.blob.type || 'image/jpeg', 'Cache-Control': 'max-age=31536000' }
+      }));
+    })
+  );
+});
+
+self.addEventListener('fetch', function (e) {
+  var req = e.request;
+  if (req.method !== 'GET') return;
+  var url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;
+
+  // 导航请求：network-first，断网时回退到缓存的应用外壳
+  if (req.mode === 'navigate') {
+    e.respondWith(
+      fetch(req).catch(function () {
+        return caches.match('./').then(function (r) { return r || Response.error(); });
+      })
+    );
+    return;
+  }
+
+  var path = url.pathname;
+
+  // 缩略图：纯缓存读取（不会真的发起网络请求）
+  if (path.indexOf('/thumb/') >= 0) {
+    e.respondWith(
+      caches.match(path).then(function (r) { return r || new Response('', { status: 404 }); })
+    );
+    return;
+  }
+
+  // 应用外壳：cache-first，未命中回源并回填
+  if (/\\.(css|js|webmanifest|ico|png|svg)$/.test(path) || path.charAt(path.length - 1) === '/') {
+    e.respondWith(
+      caches.match(req).then(function (r) {
+        if (r) return r;
+        return fetch(req).then(function (res) {
+          if (res && res.status === 200 && res.type === 'basic') {
+            var copy = res.clone();
+            caches.open(SHELL_CACHE).then(function (c) { c.put(req, copy); });
+          }
+          return res;
+        });
+      })
+    );
+  }
+  // 其余（/api/*、/v/*、/d/* 等）：不拦截，直连网络
+});
+`;

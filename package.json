@@ -1,17 +1,19 @@
 {
-  "name": "7miao-drop",
-  "version": "1.0.0",
-  "description": "单文件、零 npm 依赖的自托管文件中转服务。带分级口令、分片上传、在线预览与二维码分享。",
+  "name": "7md",
+  "version": "1.1.0",
+  "description": "7MD · 单文件、零 npm 依赖的自托管文件中转服务。带分级口令、分片上传、在线预览、二维码分享与可安装的 Win98 桌面 PWA。",
   "license": "MIT",
   "author": "知行工作室 (https://w3b.pub)",
+  "homepage": "https://w3b.pub",
   "bin": {
-    "7miao-drop": "drop.js"
+    "7md": "drop.js"
   },
   "scripts": {
     "build": "node _build.js",
     "start": "node server.js",
     "test": "node selftest.js",
-    "test:perm": "node permtest.js"
+    "test:perm": "node permtest.js",
+    "test:pwa": "node pwtest.js"
   },
   "engines": {
     "node": ">=18"
@@ -19,20 +21,24 @@
   "files": [
     "server.js",
     "drop.js",
+    "_build.js",
+    "qr.js",
     "SKILL.md",
     "README.md",
     "LICENSE"
   ],
   "keywords": [
+    "7md",
     "file-transfer",
     "self-hosted",
     "zero-dependency",
     "single-file",
+    "pwa",
     "cloudflared",
     "qr-code"
   ],
   "repository": {
     "type": "git",
-    "url": ""
+    "url": "git+https://github.com/x2it/7MD.git"
   }
 }

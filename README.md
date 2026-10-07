@@ -1,16 +1,35 @@
-# 7喵快传
+# 7MD · 7喵快传
 
-**单文件、零 npm 依赖的自托管文件中转服务。**
+**单文件、零 npm 依赖的自托管文件中转服务，带一个能装进手机的 Win98 桌面。**
 
 复制一个 `server.js` 到任何有 Node 的机器上，`node server.js` 就能跑。
 没有 `npm install`、没有 lockfile、没有数据库、没有 Docker。
 
-> A single-file, zero-dependency self-hosted file drop server. Retro Windows 95 UI,
-> two-tier tokens, chunked upload, inline preview, QR sharing. `node server.js` and done.
+> A single-file, zero-dependency self-hosted file drop server. Retro Windows 98 UI,
+> two-tier tokens, chunked upload, inline preview, QR sharing, installable PWA.
+> `node server.js` and done.
 
 ![界面](docs/ui.png)
 
-<sub>更多截图：[文件页预览](docs/filepage.png) · [链接与权限面板](docs/link-info.png) · [二维码分享](docs/qr-share.png)</sub>
+<sub>更多截图：[Win98 桌面](docs/desktop.png) · [文件页预览](docs/filepage.png) · [手机桌面](docs/mobile-desktop.png) · [二维码分享](docs/qr-share.png)</sub>
+
+## 理念
+
+> **一个文件，一套做对了的权限模型，一个能装进手机的复古桌面。**
+
+多数文件分享工具在解决「怎么把文件传出去」；7MD 想多回答两个问题：
+
+1. **它能不能塞进你现在就有的环境？** —— 不是「先装 Docker、再配数据库、再挂反代」，
+   而是把一个 `server.js` 丢过去，`node server.js`，完事。零 npm 依赖，只用 Node 内置模块。
+2. **它值不值得多看一眼？** —— 我们没用一块空白进度条打发你，而是做了整套 Windows 98 桌面：
+   可拖动缩放的窗口、开始菜单、扫雷、贪吃蛇、MS-DOS 提示符。**这不是彩蛋，是产品的一部分**：
+   把「传个文件」这件事做得让人愿意多停留两秒。
+
+复古界面不只是玩票——它逼着我们把交互做扎实：真窗口管理、真滚动条、真右键菜单。
+你看到的每个像素级细节（98 渐变标题栏、四色旗、3D 立体边）都是照着官方系统色还原的。
+
+与作者的另一重身份呼应：知行工作室主张「知行合一」——
+**知道一个工具为什么这么设计（认知），和它真的能用（行动），缺一不可。**
 
 ## 它和别的文件分享服务有什么不同
 
@@ -20,11 +39,12 @@
 | 依赖 | 几十个 npm 包 | **0 个**（只用 Node 内置模块） |
 | 分享链接的权限 | 能看就能删 | **分级口令**：分享链接删不掉任何东西，服务端强制 |
 | 大文件 | 撞上 Cloudflare 100MB 上限就失败 | 客户端 8MB 分片，自动绕过 |
+| 手机上用 | 桌面端能跑就行 | **可安装 PWA**：装到主屏，离线开桌面，任务栏避让手势条 |
 | 给 AI / 脚本用 | 得自己读源码拼接口 | `curl "$BASE/api/meta"` 一次自举，`drop.js` 一条命令传完 |
 
 诚实的定位：**它不比 filebrowser、Pingvin Share、FileCodeBox、copyparty 功能多**——
-那些项目更成熟。本项目的价值只有一条：**极简到可以塞进任何一个环境**，
-外加一套做对了的权限模型。
+那些项目更成熟。本项目的价值是两条：**极简到可以塞进任何一个环境**，
+外加一套做对了的权限模型；**外加它是真的长在手机上**。
 
 ## 快速开始
 
@@ -124,6 +144,71 @@ curl --data-binary @报告.pdf "$BASE/api/put?name=report.pdf"  # POST
 - **文字分享**：粘贴文字 / 代码生成短链
 - **自动过期**：每分钟清理过期文件与残留分片
 
+## Windows 98 桌面（根路径）
+
+![Win98 桌面](docs/desktop.png)
+
+打开根路径（不含口令），看到的不再是上传页，而是一整个 **Win98 桌面仿真**：
+
+- **桌面与开始菜单**：我的电脑、IE 浏览器、扫雷、贪吃蛇、MS-DOS 提示符、readme.txt、
+  回收站；开始菜单带程序 / 文档 / 收藏夹 / 设置 / 查找二级菜单
+- **沉浸式文件管理**：双击「我的电脑」直达文件页；IE 是真浏览器——
+  首次打开显示 98 风格 Internet 主页（`/ie-home` 端点），地址栏可输入
+  口令 / 路径 / URL，后退 / 前进 / 主页走 iframe 真实导航历史。
+  两者分工明确，不再是同一个页面换皮
+- **窗口管理**：所有窗口可拖动、可缩放（右下角手柄）、可最小化 / 最大化
+  （标题栏右侧 `_ □ ×`，双击标题栏在最大化与还原间切换），
+  最小化后收进任务栏，点任务栏按钮恢复
+- **滚动条全隐藏**：桌面内容区与分享页统一隐藏式滚动条
+  （`scrollbar-width:none` + `::-webkit-scrollbar{display:none}`），
+  文件列表不再自带内层滚动，整页只滚一次，杜绝「边框 + 两级滚动条」的丑态
+- **用户切换**：开始菜单 → 关闭系统 → 「关闭计算机」弹出 Win98 关机对话框
+  （休眠 / 关机 / MS-DOS 三选一）。用户名 `Guest`（密码留空）→ 访客；
+  `Administrator` + `ADMIN_PASS` → 管理页。
+  登录口令服务端校验，失败 5 次/分钟限流
+- **扫雷**：完整实现——首点必不踩雷、右键/长按插旗、双击快开、
+  三种难度、计时与本地最高分
+- **屏保**：显示属性里可选四款（星空 / 飞行窗口 / 3D 迷宫 / 3D 管道），
+  支持预览与等待时间设置；触屏或动键即唤醒
+- **PWA 安装**：任务栏「安装」按钮或桌面「安装到桌面」图标
+  （manifest + Service Worker + 根作用域，需 HTTPS / localhost）
+- **彩蛋**：试试在 MS-DOS 窗口里敲 `ver`、`dir`、`help`；
+  访问不存在的路径会得到 Win98 风格的 404 错误对话框
+
+## 手机上用（PWA）
+
+![手机桌面](docs/mobile-desktop.png)
+
+Win98 桌面不是「桌面端限定」——它在手机上是一等公民。**装到主屏**：
+
+- **Android / Chrome**：菜单 →「安装应用」（或任务栏的「安装」按钮 /
+  桌面「安装到桌面」图标）。装完后长按图标还能看到快手捷方式：
+  「文件列表」「Win98 桌面」
+- **iOS / Safari**：分享 →「添加到主屏幕」。
+  需要 HTTPS（或 localhost）——Service Worker 的前置条件
+
+装好之后，`standalone` 模式下：
+
+| 能力 | 说明 |
+|---|---|
+| 上下滑动 | **桌面内容超出即可滑动**。窄屏下图标改为横排流式布局，`#desk` 回到文档流，滚动交给页面本身 |
+| 窗口 | 手机上打开任何窗口**自动最大化铺满**（小窗挤压在窄屏根本没法用），窗口内部各自滚动 |
+| 手势条避让 | 任务栏高度自动加上 `env(safe-area-inset-bottom)`，iPhone Home 条不再压住「开始」按钮 |
+| 键盘弹出 | 监听 `visualViewport`，键盘顶起时压缩桌面高度并把输入框滚进可视区 |
+| 输入框 | 统一 16px 字号——低于 16px 时 iOS 会在聚焦时自动放大整页 |
+| 预览浮层 | 图片 / 文本预览支持**下滑关闭**（超过 90px 触发），向右/左滑切换上一个/下一个 |
+| 离线 | 外壳（HTML/CSS/JS/图标）cache-first，断网仍能打开桌面与已看过的页面 |
+
+**已知限制**（诚实说明）：
+
+- 离线只缓存外壳，**文件列表与文件内容需要联网**（`/api/*`、`/v/*`、`/d/*` 一律 network-only，
+  私人文件绝不进缓存）
+- 屏保、3D 迷宫等在低端机上可能掉帧
+- iOS 对 PWA 的后台限制较严，长时间放后台会被回收
+
+> 外壳缓存带版本号（随服务启动时间变化）。**升级服务后重新打开即自动更新**，
+> 不会出现「装了 PWA 却永远停在旧版」的经典坑。
+
 ## 环境变量
 
 | 变量 | 默认 | 说明 |
@@ -137,6 +222,7 @@ curl --data-binary @报告.pdf "$BASE/api/put?name=report.pdf"  # POST
 | `TTL_HOURS` | `24` | 保留小时数，`0` = 永久 |
 | `MAX_MB` | `2048` | 单文件上限 |
 | `MAX_TOTAL_MB` | `5120` | 总容量上限，`0` = 不限 |
+| `ADMIN_PASS` | `@8688991230` | Win98 桌面登录框里 `Administrator` 的密码（建议必改） |
 | `RATE_INIT_PER_MIN` | `60` | 每 IP 每分钟上传次数，`0` = 不限流 |
 | `TRUST_PROXY` | `0` | 仅当反代**不在本机**且会覆写 `X-Forwarded-For` 时才设 `1` |
 | `DATA_DIR` | `./data` | 数据目录 |
@@ -149,6 +235,9 @@ curl --data-binary @报告.pdf "$BASE/api/put?name=report.pdf"  # POST
 **这不是一个经过对抗性审查的面向公网的产品**，请按「个人自用的中转工具」定位使用。
 完整的威胁模型、防得住什么、防不住什么，见 [SECURITY.md](SECURITY.md)。
 
+Win98 桌面登录框里 `Administrator` 的默认密码（见环境变量表）只是个演示彩蛋，
+**不是安全边界**——公网部署前务必改成自己的 `ADMIN_PASS`。
+
 最低要求：**不要裸奔在公网**，用隧道或反向代理终结 TLS。
 
 ## 实测验证过的事
@@ -157,11 +246,13 @@ curl --data-binary @报告.pdf "$BASE/api/put?name=report.pdf"  # POST
 
 | 项目 | 方式 |
 |---|---|
-| 接口 | 26 项自测，本机与公网隧道各跑一遍 |
-| 权限 | 21 项，确认分享口令删除返回 403 且文件未被误删 |
+| 接口 | 28 项自测，本机与公网隧道各跑一遍 |
+| 权限 | 20 项，确认分享口令删除返回 403 且文件未被误删 |
+| 桌面 | **115 项**验收（无头 Chromium 直连 CDP）：窗口/扫雷三档难度/屏保/登录/贪吃蛇最大化全流程 |
+| PWA | 33 项：manifest、Service Worker 策略、图标、CSP、首页隔离 |
 | 大文件 | 100MB 分片上传，下载回来 SHA256 逐字节一致 |
 | 二维码 | jsQR 真实解码 v1–v34、四个纠错级别、中文、emoji；并用真实浏览器 canvas 渲染后截图反解 |
-| 移动端 | CDP 真机仿真 390×844，确认无横向溢出 |
+| 移动端 | CDP 真机仿真 390×844：确认无横向溢出、桌面可滚、窗口自动铺满、输入框 16px |
 | XFF 伪造 | 从**非回环地址**轮换伪造 IP，确认无法绕过限流 |
 | 配额绕过 | 实测「声明 1 字节实传 3MB」，确认被 507 拦下且不落盘 |
 | CSP | 真实浏览器加载，确认无违规、功能不受影响 |
@@ -170,9 +261,11 @@ curl --data-binary @报告.pdf "$BASE/api/put?name=report.pdf"  # POST
 
 ```bash
 node _build.js                             # 由 _newui.js + qr.js 生成 server.js
-node selftest.js http://127.0.0.1:8080 <管理口令>
-node permtest.js http://127.0.0.1:8080 <管理口令> <分享口令>
-node bigtest.js  http://127.0.0.1:8080 <管理口令> 20
+node selftest.js   http://127.0.0.1:8080 <分享口令> <管理口令>
+node permtest.js   http://127.0.0.1:8080 <管理口令> <分享口令>
+node pwtest.js     http://127.0.0.1:8080            # PWA 自测
+node desktoptest.js http://127.0.0.1:8080           # 桌面验收（需 Chromium）
+node bigtest.js    http://127.0.0.1:8080 <管理口令> 20
 ```
 
 **`server.js` 是构建产物**，改界面请改 `_newui.js`。

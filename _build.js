@@ -68,7 +68,7 @@ const vm = require('vm');
 let uiValues;
 try {
   uiValues = vm.runInContext(
-    ui.replace(/\s+$/, '') + '\n;({ PAGE: PAGE, CSS: CSS, APP_JS: APP_JS, QR_JS: QR_JS })',
+    ui.replace(/\s+$/, '') + '\n;({ PAGE: PAGE, CSS: CSS, APP_JS: APP_JS, QR_JS: QR_JS, SW_JS: SW_JS })',
     vm.createContext({}),
     { filename: 'frontend.js' }
   );
@@ -76,7 +76,7 @@ try {
   fail('前端段无法求值: ' + e.message);
 }
 
-for (const name of ['APP_JS', 'QR_JS']) {
+for (const name of ['APP_JS', 'QR_JS', 'SW_JS']) {
   const code = uiValues[name];
   if (typeof code !== 'string') fail('拿不到 ' + name + ' 的字符串值');
   try {
@@ -86,7 +86,39 @@ for (const name of ['APP_JS', 'QR_JS']) {
     fail(name + ' 不是合法 JS —— 它会原样下发给浏览器，整站脚本会静默失效。\n        ' + head);
   }
 }
-console.log('  浏览器端脚本自检: APP_JS / QR_JS 语法均通过');
+console.log('  浏览器端脚本自检: APP_JS / QR_JS / SW_JS 语法均通过');
+
+// ── 5b. HOME_JS（根桌面）也在边界外，本脚本不写它，但必须自检 ──
+// 踩过的坑：HOME_JS 是模板字符串，里面的换行要写成 \\n；
+// 一旦写成 \n，模板求值阶段就把它变成真实换行，下发的 /home.js 变成
+// 非法 JS —— 页面渲染完全正常（HTML/CSS 都对），却没有任何行为，
+// 控制台只有一句 SyntaxError。比全站白屏更难发现，所以固化成检查。
+(function checkHomeJs() {
+  const s = fs.readFileSync(TARGET, 'utf8');
+  const head = 'const HOME_JS = `';
+  const tail = 'const HOME_PAGE_404';
+  const i = s.indexOf(head);
+  const j = s.indexOf(tail);
+  if (i < 0 || j < 0 || j < i) {
+    console.log('  [warn] 找不到 HOME_JS 段，跳过检查');
+    return;
+  }
+  const body = s.slice(i + head.length, s.lastIndexOf('`', j));
+  // 先按模板字符串求值，拿到浏览器真正会收到的文本
+  let delivered;
+  try {
+    delivered = vm.runInContext('`' + body + '`', vm.createContext({}), { filename: 'home-template.js' });
+  } catch (e) {
+    fail('HOME_JS 模板无法求值: ' + e.message);
+  }
+  try {
+    new vm.Script(delivered, { filename: 'home.js' });
+  } catch (e) {
+    const head2 = String(e.stack).split('\n').slice(0, 4).join('\n        ');
+    fail('HOME_JS 求值后不是合法 JS —— /home.js 会静默失效。\n        多半是模板里的 \\n 漏写成了 \\n。\n        ' + head2);
+  }
+  console.log('  根桌面脚本自检: HOME_JS 语法通过 (' + delivered.length + ' 字节下发)');
+})();
 
 console.log('构建完成');
 console.log('  server.js     : ' + out.length + ' 字节 / ' + out.split('\n').length + ' 行');

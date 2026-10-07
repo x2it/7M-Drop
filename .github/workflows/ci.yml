@@ -35,8 +35,10 @@ jobs:
             sleep 0.5
           done
 
-      - name: 接口自测（26 项）
-        run: node selftest.js http://127.0.0.1:8080 ci-admin
+      # selftest 签名是 <baseUrl> <shareToken> [adminToken]：
+      # 第 2 参必须是分享（游客）口令，用于断言「游客删除被 403 拒绝」
+      - name: 接口自测（28 项）
+        run: node selftest.js http://127.0.0.1:8080 ci-guest ci-admin
 
       - name: 权限自测（21 项）
         run: node permtest.js http://127.0.0.1:8080 ci-admin ci-guest

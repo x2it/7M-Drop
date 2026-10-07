@@ -6,14 +6,20 @@ drop.config.json
 
 # 隧道客户端二进制，53MB，让使用者自己下载
 cloudflared.exe
+cloudflared
 
 # 安装文档的提取产物
 install-doc/_fresh
 
 # 构建/调试残留
 *.bak
+*.log
+server.log
 .edge-tmp/
 .edge2/
 .edgeprof/
 .edge-cdp/
 .edge-cdp2/
+
+# AI 助手工作目录
+.codebuddy/

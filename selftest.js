@@ -8,8 +8,9 @@
 
 const BASE = process.argv[2] || 'http://127.0.0.1:8080';
 const TOKEN = process.argv[3];
+const ADMIN = process.argv[4]; // 可选：管理口令 token，用于验证管理删除与清理残留
 if (!TOKEN) {
-  console.error('用法: node selftest.js <baseUrl> <管理口令>');
+  console.error('用法: node selftest.js <baseUrl> <shareToken> [adminToken]');
   process.exit(2);
 }
 const P = BASE + '/s/' + TOKEN;
@@ -147,19 +148,29 @@ async function jfetch(url, opts) {
   r = await jfetch(P + '/d/' + htmlId);
   ok('HTML 下载为附件', (r.headers.get('content-disposition') || '').startsWith('attachment'));
 
-  // 10. 删除
+  // 10. 删除（现行权限模型：游客删除被拒绝，仅管理链接可删除）
   r = await jfetch(P + '/api/delete', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ id: fileId }),
   });
-  ok('删除成功', r.status === 200);
+  ok('游客删除被拒绝 (403)', r.status === 403, 'status=' + r.status);
   r = await jfetch(P + '/d/' + fileId);
-  ok('删除后下载返回 404', r.status === 404, 'status=' + r.status);
+  ok('游客删除后文件仍在 (200)', r.status === 200, 'status=' + r.status);
+  if (ADMIN) {
+    r = await jfetch(BASE + '/s/' + ADMIN + '/api/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: fileId }),
+    });
+    ok('管理链接删除成功', r.status === 200, 'status=' + r.status);
+    r = await jfetch(P + '/d/' + fileId);
+    ok('删除后下载返回 404', r.status === 404, 'status=' + r.status);
+  }
 
-  // 清理测试残留
+  // 清理测试残留（需要管理口令；无则留给 TTL 自动过期）
   for (const id of [textId, htmlId]) {
-    await jfetch(P + '/api/delete', {
+    await jfetch((ADMIN ? BASE + '/s/' + ADMIN : P) + '/api/delete', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id }),

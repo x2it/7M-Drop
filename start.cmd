@@ -2,7 +2,7 @@
 chcp 65001 >nul
 cd /d "%~dp0"
 
-REM ═══════════ 7喵快传 · 启动配置 ═══════════
+REM ═══════════ 7MD（7喵快传）· 启动配置 ═══════════
 REM  改完保存，双击本文件即可生效。
 REM
 REM  ⚠️ 第一次用请务必把下面两个口令改成你自己的随机串。
@@ -34,7 +34,7 @@ set HOST=::
 REM ══════════════════════════════════════════
 
 echo.
-echo   7喵快传 · 本地文件中转服务
+echo   7MD · 本地文件中转服务
 echo.
 echo   管理链接: http://localhost:%PORT%/s/%TOKEN%/
 echo   分享链接: http://localhost:%PORT%/s/%SHARE_TOKEN%/

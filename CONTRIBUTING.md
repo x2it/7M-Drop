@@ -41,8 +41,9 @@ node --check server.js
 
 ```bash
 node _build.js && node --check server.js   # 构建 + 语法
-node selftest.js http://127.0.0.1:8080 <管理口令>       # 26 项接口
-node permtest.js http://127.0.0.1:8080 <管理口令> <分享口令>  # 21 项权限
+node selftest.js http://127.0.0.1:8080 <分享口令> <管理口令>   # 28 项接口
+node permtest.js http://127.0.0.1:8080 <管理口令> <分享口令>  # 20 项权限
+node desktoptest.js http://127.0.0.1:8080                    # 125 项桌面验收（需 Chromium）
 ```
 
 涉及前端交互的改动，**不要只看代码就说没问题**——用无头浏览器真跑一遍。
