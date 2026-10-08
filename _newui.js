@@ -1583,19 +1583,22 @@ self.addEventListener('fetch', function (e) {
     return;
   }
 
-  // 应用外壳：cache-first，未命中回源并回填
+  // 应用外壳：cache-first，未命中回源并回填。
+  // 与根 SW 同一处坑：页面给静态资源加 ?v= 版本号时，按完整 request 匹配会落空，
+  // 离线首启就拿不到 CSS/JS。统一按 pathname 存取，版本号只当缓存破坏器用。
   if (/\\.(css|js|webmanifest|ico|png|svg)$/.test(path) || path.charAt(path.length - 1) === '/') {
+    var key = url.pathname;
     e.respondWith(
-      caches.match(req).then(function (r) {
+      caches.match(key).then(function (r) {
         if (r) return r;
         return fetch(req).then(function (res) {
           if (res && res.status === 200 && res.type === 'basic') {
             var copy = res.clone();
-            caches.open(SHELL_CACHE).then(function (c) { c.put(req, copy); });
+            caches.open(SHELL_CACHE).then(function (c) { c.put(key, copy); });
           }
           return res;
         });
-      })
+      }).catch(function () { return fetch(req); })
     );
   }
   // 其余（/api/*、/v/*、/d/* 等）：不拦截，直连网络

@@ -19,8 +19,8 @@
  *   GUEST_UPLOAD      访客能否上传          默认 1；设 0 则只能下载
  *   GUEST_LIST        访客能否看列表/下载   默认 1；设 0 则只能上传（盲投）
  *   TTL_HOURS         文件保留小时数        默认 24（0 = 永久保留）
- *   MAX_MB            单文件大小上限(MB)    默认 2048
- *   MAX_TOTAL_MB      总容量上限(MB)        默认 5120；0 = 不限
+ *   MAX_MB            单文件大小上限（MB）    默认 2048
+ *   MAX_TOTAL_MB      总容量上限（MB）        默认 5120；0 = 不限
  *   RATE_INIT_PER_MIN 每 IP 每分钟上传次数  默认 60；0 = 不限流
  *   DATA_DIR          数据目录              默认 ./data
  */
@@ -85,8 +85,11 @@ if (SHARE_TOKEN.toLowerCase() === 'same') {
 
 // 桌面「登录 Windows 98」的 Administrator 通行口令。
 // 与 TOKEN 是两个独立的东西：TOKEN 是 /s/<口令>/ 的路径凭据，
-// ADMIN_PASS 只是仿真桌面登录框的密码。校验一律走服务端，前端源码里不出现明文。
+// ADMIN_PASS 只是仿真桌面登录框的口令。校验一律走服务端，前端源码里不出现明文。
+// 生产环境务必通过环境变量 ADMIN_PASS 覆盖默认值；未设置时沿用内置默认，
+// 并在启动时打印告警，避免"裸口令裸奔"。
 const ADMIN_PASS = String(process.env.ADMIN_PASS || '@8688991230');
+const ADMIN_PASS_IS_DEFAULT = !process.env.ADMIN_PASS;
 
 const mbText = (bytes) => (bytes / 1048576).toFixed(1) + ' MB';
 
@@ -137,10 +140,11 @@ function saveIndex() {
 // ───────────────────────────── 工具 ─────────────────────────────
 
 function safeEqual(a, b) {
-  const ba = Buffer.from(String(a));
-  const bb = Buffer.from(String(b));
-  if (ba.length !== bb.length) return false;
-  return crypto.timingSafeEqual(ba, bb);
+  // 先各自哈希成定长摘要再比较：直接比 Buffer 时长度不等会在到达 timingSafeEqual
+  // 之前就返回，口令长度因此可被逐字节猜出来（典型的长度侧信道）。
+  const ha = crypto.createHash('sha256').update(String(a)).digest();
+  const hb = crypto.createHash('sha256').update(String(b)).digest();
+  return crypto.timingSafeEqual(ha, hb);
 }
 
 function roleFor(tok) {
@@ -195,6 +199,26 @@ function rateLimited(ip) {
   arr.push(t);
   initHits.set(ip, arr);
   return arr.length > RATE_INIT_PER_MIN;
+}
+
+// 并发写入字节账本：只统计"已进 tmp 但还没算进 index"的字节。
+// 之前每个请求都在开头单独算一次配额余量，并发上传时大家看到的是同一份余量，
+// 于是 N 个请求可以各自写满整块空间（典型的检查-使用时间差）。
+// 现在把在途字节集中记账，判断时用「已落盘 + 所有在途」一起比总配额。
+const inflightBytes = new Map();
+function totalInflight() {
+  let s = 0;
+  for (const v of inflightBytes.values()) s += v;
+  return s;
+}
+function otherInflight(selfKey) {
+  let s = 0;
+  for (const [k, v] of inflightBytes) if (k !== selfKey) s += v;
+  return s;
+}
+function quotaRoomFor(selfKey) {
+  if (!MAX_TOTAL_BYTES) return Infinity;
+  return Math.max(0, MAX_TOTAL_BYTES - totalBytes() - otherInflight(selfKey));
 }
 
 // 登录口令限流：比 init 严格得多（每分钟 5 次）。
@@ -321,8 +345,9 @@ async function handleInit(req, res) {
   }
   if (MAX_TOTAL_BYTES) {
     const used = totalBytes();
-    const inflight = Array.from(uploads.values()).reduce((s, u) => s + (u.size || 0), 0);
-    if (used + inflight + size > MAX_TOTAL_BYTES) {
+    // 在途字节统一从 shared ledger 读：它同时覆盖分片上传和并发 put，
+    // 只看 uploads.size 会漏掉已经实收但还没写满声明大小的会话。
+    if (used + totalInflight() + size > MAX_TOTAL_BYTES) {
       return sendJson(res, 507, {
         error: '服务器存储已满（已用 ' + mbText(used) + '，上限 ' + mbText(MAX_TOTAL_BYTES) + '）',
       });
@@ -342,6 +367,9 @@ async function handleInit(req, res) {
     name, size, type, tmp,
     received: 0, nextIndex: 0, createdAt: Date.now(),
   });
+  // 会话一建立就占账本：从此刻起它写的每个字节都不会被别的请求重复分配，
+  // 直到 finish 入索引（那时 totalBytes 自然接管）或 abort 释放。
+  inflightBytes.set('chunk:' + id, 0);
 
   sendJson(res, 200, { uploadId: id, chunkSize: CHUNK_SIZE, maxBytes: MAX_BYTES });
 }
@@ -419,20 +447,23 @@ async function handlePut(req, res, url, token) {
 
   const id = newId();
   const tmp = path.join(TMP_DIR, id + '.part');
-  // 配额余量先算一次，之后按累计字节 O(1) 判断，避免每收到一块都全量扫索引
-  const room = MAX_TOTAL_BYTES ? Math.max(0, MAX_TOTAL_BYTES - totalBytes()) : Infinity;
+  const key = 'put:' + id;
+  inflightBytes.set(key, 0);
   let size = 0;
   let tooBig = false;
   let overQuota = false;
   req.on('data', (c) => {
     size += c.length;
+    inflightBytes.set(key, size);
     if (size > MAX_BYTES) { tooBig = true; req.destroy(); }
-    else if (size > room) { overQuota = true; req.destroy(); }
+    // 每块都重算余量：并发的上传会持续抬高在途字节，开头算一次是不够的
+    else if (size > quotaRoomFor(key)) { overQuota = true; req.destroy(); }
   });
 
   try {
     await pipeline(req, fs.createWriteStream(tmp));
   } catch {
+    inflightBytes.delete(key);
     await fsp.rm(tmp, { force: true }).catch(() => {});
     if (tooBig) return sendJson(res, 413, { error: '文件超过上限 ' + Math.round(MAX_BYTES / 1048576) + ' MB' });
     if (overQuota) return sendJson(res, 507, { error: '服务器存储已满' });
@@ -440,17 +471,10 @@ async function handlePut(req, res, url, token) {
   }
 
   // 配额按「实收字节」复核，避免少报 size 绕过
-  if (MAX_TOTAL_BYTES && totalBytes() + size > MAX_TOTAL_BYTES) {
+  if (MAX_TOTAL_BYTES && size > quotaRoomFor(key)) {
+    inflightBytes.delete(key);
     await fsp.rm(tmp, { force: true }).catch(() => {});
     return sendJson(res, 507, { error: '服务器存储已满' });
-  }
-
-  try {
-    await fsp.rename(tmp, blobPath(id));
-  } catch (err) {
-    await fsp.rm(tmp, { force: true }).catch(() => {});
-    console.error('[put] 落盘失败:', err.message);
-    return sendJson(res, 500, { error: '保存失败' });
   }
 
   const rec = {
@@ -463,8 +487,21 @@ async function handlePut(req, res, url, token) {
     downloads: 0,
     kind: 'file',
   };
-  index.unshift(rec);
-  await saveIndex();
+
+  try {
+    // rename → 入索引 → 存盘，这段窗口里字节还在数据目录却不在索引里
+    //（totalBytes 只读索引），所以账本条目要一直留到 saveIndex 之后才释放，
+    // 否则并发请求会把同一份余量重复分发出去。
+    await fsp.rename(tmp, blobPath(id));
+    index.unshift(rec);
+    await saveIndex();
+  } catch (err) {
+    inflightBytes.delete(key);
+    await fsp.rm(tmp, { force: true }).catch(() => {});
+    console.error('[put] 落盘失败:', err.message);
+    return sendJson(res, 500, { error: '保存失败' });
+  }
+  inflightBytes.delete(key);
 
   const base = baseUrlFor(req, token);
   sendJson(res, 200, {
@@ -496,27 +533,32 @@ async function handleChunk(req, res, url) {
     return sendJson(res, 413, { error: '文件超过上限' });
   }
 
+  const ckey = 'chunk:' + id;
+  inflightBytes.set(ckey, up.received);
   // 总配额在 init 时只按「客户端声明的大小」检查，可以少报绕过：
   // 声明 1 字节再实灌几 MB，数据会落进 tmp 却不算配额。
-  // 这里按实际写入量再兜一道，把 tmp 的占用也压在配额之内。
-  if (MAX_TOTAL_BYTES) {
-    let otherInflight = 0;
-    for (const [k, v] of uploads) {
-      if (k !== id) otherInflight += v.size || 0;
-    }
-    const projected = totalBytes() + otherInflight + up.received + declared;
-    if (projected > MAX_TOTAL_BYTES) {
-      await abortUpload(id);
-      return sendJson(res, 507, { error: '服务器存储已满' });
-    }
+  // 这里用共享在途账本（含并发 put 字节）再兜一道，把 tmp 占用压在配额内。
+  if (MAX_TOTAL_BYTES && up.received + declared > quotaRoomFor(ckey)) {
+    await abortUpload(id);
+    return sendJson(res, 507, { error: '服务器存储已满' });
   }
+
+  // 上面两道闸门都依赖 content-length；分片客户端用 chunked 时不带该头，
+  // declared === 0 会让它们整个失效。真正的拦截放在写入过程中：
+  // 每收到一块就实时重算「单文件上限」和「总配额」，任一越界立即断流。
+  const totalRoom = quotaRoomFor(ckey) - up.received;
 
   let received = 0;
   let tooBig = false;
+  let quotaFull = false;
   req.on('data', (c) => {
     received += c.length;
+    inflightBytes.set(ckey, up.received + received);
     if (up.received + received > MAX_BYTES) {
       tooBig = true;
+      req.destroy();
+    } else if (received > totalRoom) {
+      quotaFull = true;
       req.destroy();
     }
   });
@@ -526,6 +568,7 @@ async function handleChunk(req, res, url) {
     await pipeline(req, ws);
   } catch {
     await abortUpload(id);
+    if (quotaFull) return sendJson(res, 507, { error: '服务器存储已满' });
     return sendJson(res, tooBig ? 413 : 400, {
       error: tooBig ? '文件超过上限' : '上传中断',
     });
@@ -533,6 +576,9 @@ async function handleChunk(req, res, url) {
 
   up.received += received;
   up.nextIndex += 1;
+  // 这里不能释放账本：本片已写进 tmp、还没进索引，若此刻释放，
+  // 下一片到来之前这段时间这份字节对配额完全隐形。留到 finish / abort 再清。
+  inflightBytes.set(ckey, up.received);
   sendJson(res, 200, { ok: true, received: up.received, next: up.nextIndex });
 }
 
@@ -561,6 +607,8 @@ async function handleFinish(req, res, token) {
   }
 
   const id = String(body.uploadId);
+  const fkey = 'chunk:' + id;
+  inflightBytes.set(fkey, up.received);
   const finalPath = blobPath(id);
   try {
     await fsp.rename(up.tmp, finalPath);
@@ -583,6 +631,8 @@ async function handleFinish(req, res, token) {
   index.unshift(rec);
   uploads.delete(id);
   await saveIndex();
+  // 到这里字节才真正被 totalBytes 看见，此刻释放账本才算安全
+  inflightBytes.delete(fkey);
 
   // 与 /api/put 保持一致的返回形状 —— 客户端不该因为走了分片就拿不到链接
   const base = baseUrlFor(req, token);
@@ -600,6 +650,8 @@ async function handleFinish(req, res, token) {
 async function abortUpload(id) {
   const up = uploads.get(id);
   uploads.delete(id);
+  // 临时文件删了，账本上的占用也要一并释放，否则配额会「虚占」到重启
+  inflightBytes.delete('chunk:' + id);
   const target = up ? up.tmp : path.join(TMP_DIR, id + '.part');
   await fsp.rm(target, { force: true }).catch(() => {});
 }
@@ -610,8 +662,13 @@ async function handleText(req, res, token) {
   let body;
   try {
     body = await readJson(req, MAX_TEXT_BYTES + 65536);
-  } catch {
-    return sendJson(res, 413, { error: '文本过大' });
+  } catch (err) {
+    // 之前这里一律回 413：请求体本就超限和「JSON 写坏了」被混成同一种错，
+    // 客户端拿着 413 去重试一个永远不可能成功的畸形请求。此处按原因分开。
+    const tooLarge = err && err.message === 'body too large';
+    return sendJson(res, tooLarge ? 413 : 400, {
+      error: tooLarge ? '文本过大' : '请求格式错误',
+    });
   }
 
   const text = String(body.text == null ? '' : body.text);
@@ -619,6 +676,13 @@ async function handleText(req, res, token) {
   if (!text.trim()) return sendJson(res, 400, { error: '内容为空' });
   if (buf.length > MAX_TEXT_BYTES) {
     return sendJson(res, 413, { error: '文本超过 ' + Math.round(MAX_TEXT_BYTES / 1024) + ' KB' });
+  }
+
+  // 总配额：/api/put 有这道闸，文字分享漏了 —— 存储上限形同虚设。
+  if (MAX_TOTAL_BYTES && totalBytes() + buf.length > MAX_TOTAL_BYTES) {
+    return sendJson(res, 507, {
+      error: '服务器存储已满（已用 ' + mbText(totalBytes()) + '，上限 ' + mbText(MAX_TOTAL_BYTES) + '）',
+    });
   }
 
   const id = newId();
@@ -839,7 +903,7 @@ async function handleAdminLogin(req, res) {
   if (loginRateLimited(ip)) {
     return sendJson(res, 429, { ok: false, error: '尝试次数过多，请 1 分钟后再试' });
   }
-  sendJson(res, 401, { ok: false, error: '用户名或密码不正确' });
+  sendJson(res, 401, { ok: false, error: '用户名或口令不正确' });
 }
 
 /**
@@ -889,7 +953,7 @@ const HOME_PAGE = `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="theme-color" content="#008080">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -986,7 +1050,7 @@ const HOME_PAGE = `<!DOCTYPE html>
 
   Guest 用户：看列表、下载、上传
   Administrator：额外可删除文件
-    （桌面登录密码见服务端启动日志）
+    （桌面登录口令见服务端启动日志）
 
 快捷操作：
   · 桌面右键 → 属性  换壁纸/屏保
@@ -1110,7 +1174,7 @@ const HOME_PAGE = `<!DOCTYPE html>
       <div class="msgbody">
         <span class="micon info" id="msgIcon"></span>
         <div class="mtext-wrap">
-          <div class="mtxt" id="msgText">...</div>
+          <div class="mtxt" id="msgText">…</div>
           <div class="msub" id="msgSub" hidden></div>
         </div>
       </div>
@@ -1129,7 +1193,7 @@ const HOME_PAGE = `<!DOCTYPE html>
       <div class="dlg-pad">
         <div class="shut-banner">
           <div class="shut-moon"></div>
-          <span>您想要做什么？</span>
+          <span>你想要做什么？</span>
         </div>
         <div class="shut-opts" id="shutOpts">
           <label class="radio-row"><input type="radio" name="shutopt" value="sleep"><span>将计算机转入休眠状态<em>（进入屏幕保护程序）</em></span></label>
@@ -1156,7 +1220,7 @@ const HOME_PAGE = `<!DOCTYPE html>
           <div class="login-sub">7喵快传 · 知行工作室</div>
         </div>
         <div class="login-form">
-          <div class="login-hint" id="loginHint">键入用户名和密码以登录。</div>
+          <div class="login-hint" id="loginHint">键入用户名和口令以登录。</div>
           <div class="login-row">
             <span class="login-k">用户名(<u>U</u>):</span>
             <select id="loginUser" class="login-input">
@@ -1165,11 +1229,11 @@ const HOME_PAGE = `<!DOCTYPE html>
             </select>
           </div>
           <div class="login-row">
-            <span class="login-k">密码(<u>P</u>):</span>
+            <span class="login-k">口令(<u>P</u>):</span>
             <input id="loginPass" class="login-input" type="password" autocomplete="new-password" spellcheck="false" placeholder="Guest 可留空">
           </div>
           <div class="login-fine">
-            <label><input type="checkbox" id="loginRemember"> 记住我的密码</label>
+            <label><input type="checkbox" id="loginRemember"> 记住我的口令</label>
           </div>
         </div>
       </div>
@@ -1190,9 +1254,9 @@ const HOME_PAGE = `<!DOCTYPE html>
         <div class="smi has-sub" data-sub="find"><span class="smi-ico ico-find"></span>查找<span class="sm-arrow">▸</span></div>
         <div class="sm-sep"></div>
         <div class="smi" data-app="help"><span class="smi-ico ico-help"></span>帮助</div>
-        <div class="smi" data-app="run"><span class="smi-ico ico-run"></span>运行...</div>
+        <div class="smi" data-app="run"><span class="smi-ico ico-run"></span>运行…</div>
         <div class="sm-sep"></div>
-        <div class="smi" data-app="shutdown"><span class="smi-ico ico-shut"></span>关闭系统...</div>
+        <div class="smi" data-app="shutdown"><span class="smi-ico ico-shut"></span>关闭系统…</div>
       </div>
 
       <div class="smsub" id="smsub-prog" hidden>
@@ -1312,7 +1376,7 @@ const HOME_PAGE = `<!DOCTYPE html>
     <div class="shut-stage">
       <div class="shut-logo">
         <div class="winflag big"></div>
-        <div class="shut-wordmark">Microsoft<b>Windows</b><i>98</i></div>
+        <div class="shut-wordmark">Microsoft <b>Windows</b><i>98</i></div>
       </div>
       <div class="shut-line">现在可以安全地关闭计算机了。</div>
       <div class="shut-line shut-small">（点击屏幕任意位置重新启动）</div>
@@ -1373,7 +1437,8 @@ body {
   --desk1: #008080;
   --desk2: #007d7d;
   /* 几何（Win98 标准度量） */
-  --tb-h: 28px;      /* 任务栏高度 */
+  --tb-h: 28px;      /* 任务栏基础高度 */
+  --taskbar-h: calc(var(--tb-h) + env(safe-area-inset-bottom, 0px)); /* 含底部安全区，最大化窗口用它让位 */
   --ui-fs: 11px;     /* MS Sans Serif 8pt ≈ 11px */
   --scroll-w: 16px;  /* 滚动条宽度 */
 }
@@ -1389,7 +1454,7 @@ body {
    浏览器默认滚动条（Chrome 那条细灰条）在复古界面里极其违和，
    这是「多级滚动条看着丑」的根源。此处完整还原 Win98 滚动条：
    16px 宽、#c0c0c0 槽底 50% 棋盘格、四层立体边箭头按钮与滑块。 */
-* { scrollbar-width: auto; scrollbar-color: var(--face) transparent; }
+* { scrollbar-width: auto; scrollbar-color: var(--sh) var(--face); }
 ::-webkit-scrollbar { width: var(--scroll-w); height: var(--scroll-w); }
 ::-webkit-scrollbar-track {
   background-color: var(--face);
@@ -1475,8 +1540,9 @@ body {
   text-shadow: 1px 1px 0 #000;
   text-align: center;
   padding: 0 2px;
-  max-width: 74px;
+  max-width: 100%;
   overflow-wrap: break-word;
+  white-space: normal;
 }
 .dicon.sel .dlabel { background: #000080; outline: 1px dotted #fff; }
 .dicon.sel .ico { filter: brightness(.7) saturate(.6); }
@@ -1534,6 +1600,26 @@ body {
   background: #1971c2;
   box-shadow: 0 3px #1971c2, 0 6px #1971c2;
 }
+/* 这三个窗口的标题栏图标之前没有专属 ::after，于是统统退化成 .tb-icon 的绿色 LED 点，
+   看着像「同一个图标」。补上各自的简易字形（风格从简，重在可辨识）。 */
+.tb-pc-ico { background: #fff; box-shadow: inset 0 0 0 2px #808080; }
+.tb-pc-ico::after {
+  content: ""; position: absolute; left: 3px; top: 4px;
+  width: 7px; height: 5px; background: #1971c2;
+  box-shadow: 0 7px #1971c2, 0 12px #1971c2;
+}
+.tb-mine-ico { background: #c3c3c3; }
+.tb-mine-ico::after {
+  content: ""; position: absolute; left: 4px; top: 3px;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: radial-gradient(#fff 0 1px, #000 2px);
+  box-shadow: inset 0 0 0 1px #000;
+}
+.tb-dos-ico { background: #000; }
+.tb-dos-ico::after {
+  content: ">"; position: absolute; left: 2px; top: 0;
+  font: bold 11px ui-monospace, monospace; color: #00d000;
+}
 
 /* ───── Win95 窗口公共 ───── */
 .win95 {
@@ -1568,13 +1654,14 @@ body {
 .win95.appwin > .notepad { min-height: 160px; }
 .win95.appwin > .fm-frame { min-height: 180px; }
 .win95.appwin > .dos-body { min-height: 220px; }
-/* 最大化：铺满桌面（扣掉任务栏），并压制圆角窗口的 transform 定位 */
+/* 最大化：铺满桌面，但为顶部状态栏与底部任务栏（含安全区）让位。
+   之前只扣 --tb-h，没算 safe-area，PWA 全屏下底部会被 home 指示条/任务栏吃掉一截。 */
 .win95.maxed {
   position: fixed !important;
   left: 0 !important;
-  top: 0 !important;
+  top: var(--safe-t) !important;
   width: 100vw !important;
-  height: calc(100dvh - var(--tb-h)) !important;
+  height: calc(100dvh - var(--safe-t) - var(--taskbar-h)) !important;
   transform: none !important;
 }
 /* 标题栏控制按钮：最小化 / 最大化（真 98 的 16×14 立体小钮） */
@@ -1671,8 +1758,8 @@ body {
   font-size: 11px;
   font-weight: bold;
   line-height: 1;
-  width: 18px;
-  height: 16px;
+  width: 16px;
+  height: 14px;
   background: #c0c0c0;
   border: none;
   box-shadow: inset -1px -1px #0a0a0a, inset 1px 1px #fff,
@@ -2241,6 +2328,7 @@ canvas#game {
 }
 .crash-box { max-width: 520px; padding: 20px; }
 .crash-title { background: #c0c0c0; color: #0000aa; display: inline-block; padding: 1px 8px; margin-bottom: 16px; }
+.crash-txt { color: #c0c0c0; font-size: 13px; line-height: 1.6; margin-top: 4px; }
 .crash-small { color: #c0c0ff; font-size: 12px; margin-top: 10px; }
 .crash-btn { text-align: center; margin-top: 26px; }
 
@@ -2516,7 +2604,9 @@ canvas#game {
   padding-right: 14px;
 }
 .login-brand { font-size: 20px; font-weight: 700; letter-spacing: .5px; }
-.login-sub { font-size: 9px; color: #808080; white-space: nowrap; letter-spacing: 0; }
+/* 原来的 9px + #808080 在手机屏上基本读不出来；
+   深色到 #5a5a5a、字号到 10px，仍保持 98 的小注风格但看得清。 */
+.login-sub { font-size: 10px; color: #5a5a5a; white-space: nowrap; letter-spacing: 0; }
 .login-brand b { color: #008080; }
 .winflag {
   width: 44px; height: 36px;
@@ -2561,24 +2651,6 @@ canvas#game {
 .prop-select:focus { outline: none; }
 
 /* ───── 小屏适配 ───── */
-@media (max-width: 480px) {
-  .dgroup { left: 4px; top: 4px; gap: 2px; }
-  .dicon { width: 68px; }
-  .appwin, #pcWin, #ieWin, #dosWin, #readmeWin { width: 96vw; }
-  #pcWin .fm-frame { min-height: 60vh; }
-  #mineWin { width: 96vw; }
-  canvas#game { width: min(86vw, 48vh, 400px); }
-  .taskbar { height: var(--tb-h); }
-  .taskbtn { max-width: 96px; }
-  /* 扫雷：格子大小走 --cell 变量，9 列初级窄屏也放得下 */
-  :root { --cell: 26px; }
-  .fm-frame { height: 58vh; }
-  .login-body { flex-direction: column; gap: 10px; }
-  .login-logo { flex-direction: row; width: auto; border-right: 0; box-shadow: none;
-                border-bottom: 1px solid #808080; padding: 0 0 10px; }
-  .login-k { width: 66px; font-size: 11.5px; }
-  .dos-body { height: 240px; }
-}
 @media (max-height: 560px) {
   canvas#game { width: min(78vw, 44vh, 400px); }
   .fm-frame { height: 62vh; }
@@ -2644,6 +2716,27 @@ canvas#game {
 @media (max-width: 640px) {
   html, body { height: auto; min-height: 100%; overflow-y: auto; overscroll-behavior-y: none; }
   body { display: block; }
+}
+
+/* 超小屏（≤480px）：在 640 适配之上再收紧图标与弹层。
+   放在 640 之后，使其在窄屏下以「更具体」的断点胜出。 */
+@media (max-width: 480px) {
+  .dgroup { left: 4px; top: 4px; gap: 2px; }
+  .dicon { width: 68px; }
+  .appwin, #pcWin, #ieWin, #dosWin, #readmeWin { width: 96vw; }
+  #pcWin .fm-frame { min-height: 60vh; }
+  #mineWin { width: 96vw; }
+  canvas#game { width: min(86vw, 48vh, 400px); }
+  .taskbar { height: var(--tb-h); }
+  .taskbtn { max-width: 96px; }
+  /* 扫雷：格子大小走 --cell 变量，9 列初级窄屏也放得下 */
+  :root { --cell: 26px; }
+  .fm-frame { height: 58vh; }
+  .login-body { flex-direction: column; gap: 10px; }
+  .login-logo { flex-direction: row; width: auto; border-right: 0; box-shadow: none;
+                border-bottom: 1px solid #808080; padding: 0 0 10px; }
+  .login-k { width: 66px; font-size: 11.5px; }
+  .dos-body { height: 240px; }
 }
 `;
 
@@ -2764,6 +2857,8 @@ function closeWin(win) {
   win.hidden = true;
   if (win._taskBtn) { win._taskBtn.remove(); win._taskBtn = null; }
   if (win.id === 'gameWin' && game.state === 'run') game.pause();
+  /* 扫雷同理：窗口藏起来但计时器还在跑，回来发现时间凭空多出几分钟 */
+  if (win.id === 'mineWin' && typeof mines !== 'undefined' && mines) mines.stop();
   setActiveTop();
 }
 
@@ -2786,9 +2881,13 @@ document.querySelectorAll('[data-drag]').forEach(function (bar) {
     function up() {
       window.removeEventListener('pointermove', mv);
       window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
     }
+    // pointercancel 必须一起监听：手机上系统手势、来电、下拉通知栏都会把它发出来，
+    // 只听 pointerup 的话监听函数永远留在 window 上，窗口从此黏着手指跑。
     window.addEventListener('pointermove', mv);
     window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
   });
 });
 
@@ -2819,6 +2918,13 @@ function maxWin(win) {
     win.style.width = '';
     win.style.height = '';
     win.classList.add('maxed');
+  }
+  /* 按钮的 aria-label/title 必须跟着状态走，否则读屏永远念「最大化」 */
+  var mb = win.querySelector('.wbtn.max');
+  if (mb) {
+    var maxed = win.classList.contains('maxed');
+    mb.setAttribute('aria-label', maxed ? '还原' : '最大化');
+    mb.title = maxed ? '还原' : '最大化';
   }
   /* 扫雷最大化时格子同步放大（铺满大屏而不是原尺寸缩在角落） */
   if (win.id === 'mineWin') mines.fitCell(win.classList.contains('maxed'));
@@ -2867,9 +2973,11 @@ document.querySelectorAll('.win95.appwin, .win95.narrowwin').forEach(function (w
     function up() {
       window.removeEventListener('pointermove', mv);
       window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
     }
     window.addEventListener('pointermove', mv);
     window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
   });
   /* 最大化状态下禁拖（真 98 是拖动即还原，这里从简） */
   bar.addEventListener('pointerdown', function (e) {
@@ -3029,8 +3137,12 @@ var mines = (function () {
   try { best = parseInt(localStorage.getItem(bestKey) || '0', 10) || 0; } catch (e) { best = 0; }
 
   function led(el, v) {
-    v = Math.max(0, Math.min(999, v));
-    el.textContent = ('00' + v).slice(-3);
+    // 仿真正 98 行为：旗插多了剩余数为负，数码管显示 "-05" 这样的值。
+    // 之前被钳到 0，玩家多插的旗在计数上完全看不出来。
+    v = Math.max(-99, Math.min(999, Math.trunc(v)));
+    el.textContent = v < 0
+      ? '-' + ('00' + Math.abs(v)).slice(-2)
+      : ('00' + v).slice(-3);
   }
   function idx(x, y) { return y * cols + x; }
 
@@ -3266,6 +3378,8 @@ var mines = (function () {
   reset();
   return {
     reset: reset,
+    /* 关窗时只停表、不重置：半局进度留着，回来还能接着玩 */
+    stop: stopTimer,
     setLevel: setLevel,
     fitCell: fitCell,
     get dead() { return dead; },
@@ -3275,7 +3389,7 @@ var mines = (function () {
 })();
 
 /* ═════════════ MS-DOS 彩蛋 ═════════════ */
-/* 防浏览器自动填充污染输入框：页面里有密码框（登录窗），
+/* 防浏览器自动填充污染输入框：页面里有口令框（登录窗），
    移动端浏览器会把 DOS 命令行 / 运行框误判成用户名输入框，
    在页面加载时把保存的凭据灌进来（且发生在未聚焦状态）。
    真实用户不可能往未聚焦的框里打字 —— 发现即清空。 */
@@ -3354,7 +3468,8 @@ function openApp(name) {
   else if (name === 'sysinfo') { fillSys(); openWin($('sysWin')); }
   else if (name === 'run') { var w = $('runWin'); w.hidden = false; bringTop(w); taskBtnFor(w); setTimeout(function () { $('runInput').focus(); }, 60); }
   else if (name === 'props') { openWin($('propWin')); markSwatch(); syncProp(); }
-  else if (name === 'saver') { openApp('props'); }
+  /* 屏幕保护图标：直接预览屏保，而不是绕去"显示属性"对话框（之前点它会弹属性窗，名不副实） */
+  else if (name === 'saver') { saver.start(true); }
   else if (name === 'install') doInstall(true);
   else if (name === 'help') openWin($('readmeWin'));
   else if (name === 'shutdown') openWin($('shutWin'));
@@ -3608,6 +3723,14 @@ document.querySelectorAll('.mu').forEach(function (mu) {
       /* ── 通用 ── */
       if (a === 'quit') closeWin(mu.closest('.win95'));
       else if (a === 'admin') askAdmin();
+      else if (a === 'refresh') {
+        var rw = mu.closest('.win95');
+        var rid = rw ? rw.id : '';
+        if (rid === 'pcWin') { var rf = $('fmFrame'); if (rf) rf.setAttribute('src', rf.getAttribute('src')); }
+        else if (rid === 'ieWin') { var ri = $('ieFrame'); if (ri) ri.setAttribute('src', ri.getAttribute('src')); }
+        else if (rid === 'mineWin') mines.reset();
+        else location.reload();
+      }
       else if (a === 'new') mines.reset();
       else if (a === 'lv1' || a === 'lv2' || a === 'lv3') {
         var p = act.getAttribute('data-lv').split(',').map(Number);
@@ -3646,6 +3769,11 @@ document.addEventListener('pointerdown', function (e) {
 /* ───────────── 桌面图标：单击选中，再点打开（兼容双击/触屏） ───────────── */
 var lastIcon = null, lastIconT = 0;
 document.querySelectorAll('.dicon').forEach(function (ic) {
+  /* 图标是纯 div，屏幕阅读器读不出它是可点的。
+     role/aria-label 在运行时从标签文本取，新增图标不用再单独维护。 */
+  ic.setAttribute('role', 'button');
+  var lb = ic.querySelector('.dlabel');
+  if (lb && lb.textContent) ic.setAttribute('aria-label', lb.textContent.trim());
   function activate() {
     document.querySelectorAll('.dicon.sel').forEach(function (o) { o.classList.remove('sel'); });
     ic.classList.add('sel');
@@ -3790,7 +3918,7 @@ function showLogin() {
   adminBase = null;
   $('loginUser').value = 'Guest';
   $('loginPass').value = '';
-  $('loginHint').textContent = '键入用户名和密码以登录。';
+  $('loginHint').textContent = '键入用户名和口令以登录。';
   $('loginHint').className = 'login-hint';
   loginWin.hidden = false;
   bringTop(loginWin);
@@ -3798,7 +3926,7 @@ function showLogin() {
 }
 function askAdmin() {
   $('loginUser').value = 'Administrator';
-  $('loginHint').textContent = '请输入 Administrator 密码。';
+  $('loginHint').textContent = '请输入 Administrator 口令。';
   $('loginHint').className = 'login-hint';
   loginWin.hidden = false;
   bringTop(loginWin);
@@ -3821,7 +3949,7 @@ function doLogin() {
     fmOpen(false);
     return;
   }
-  if (!pass) { loginFail('请输入密码。'); return; }
+  if (!pass) { loginFail('请输入口令。'); return; }
   var btn = $('loginOk');
   btn.disabled = true;
   fetch('/api/admin-login', {
@@ -3846,7 +3974,7 @@ function doLogin() {
 $('loginOk').addEventListener('click', doLogin);
 $('loginCancel').addEventListener('click', function () { loginWin.hidden = true; });
 $('loginHelp').addEventListener('click', function () {
-  msgbox('登录 Windows 98', 'Guest：无需密码，可查看、下载和上传文件。\\nAdministrator：需要密码，额外可以删除文件。\\n\\n密码由服务端保管，请查看启动日志。', 'info');
+  msgbox('登录 Windows 98', 'Guest：无需口令，可查看、下载和上传文件。\\nAdministrator：需要密码，额外可以删除文件。\\n\\n密码由服务端保管，请查看启动日志。', 'info');
 });
 $('loginPass').addEventListener('keydown', function (e) { if (e.key === 'Enter') doLogin(); });
 $('loginUser').addEventListener('keydown', function (e) { if (e.key === 'Enter') $('loginPass').focus(); });
@@ -4523,7 +4651,9 @@ var saver = (function () {
        所以要等满 waitMs），这是正确行为，不需要额外分支。*/
     if (on) stop();
   }
-  ['pointerdown', 'keydown', 'wheel', 'touchstart'].forEach(function (ev) {
+  /* 注意 keydown 不在这里：键盘单独走下面那处，
+     否则注册在前的 wake 会先把屏保关掉，方向键换款永远进不去。 */
+  ['pointerdown', 'wheel', 'touchstart'].forEach(function (ev) {
     document.addEventListener(ev, wake, { passive: true });
   });
   var mmT = 0;
@@ -4532,13 +4662,13 @@ var saver = (function () {
     if (n - mmT > 400) { mmT = n; wake(); }
   }, { passive: true });
 
-  /* 屏保运行时按 ← → 换一款（95 屏保的老习惯，也是隐藏彩蛋） */
+  /* 屏保运行时按 ← → 换一款（95 屏保的老习惯，也是隐藏彩蛋）。
+     键盘只在这一处处理：方向键换款，其它键唤醒。 */
   document.addEventListener('keydown', function (e) {
-    if (!on) return;
-    if (e.key === 'ArrowRight') { setKind((kind + 1) % KINDS.length); }
-    else if (e.key === 'ArrowLeft') { setKind((kind + KINDS.length - 1) % KINDS.length); }
-    /* 屏保中任何按键都算"唤醒"，但方向键除外（那是切换用的） */
-    else { return; }
+    if (!on) { wake(); return; }
+    if (e.key === 'ArrowRight') setKind((kind + 1) % KINDS.length);
+    else if (e.key === 'ArrowLeft') setKind((kind + KINDS.length - 1) % KINDS.length);
+    else { wake(); return; }
     e.preventDefault();
     lastAct = Date.now();
   });
@@ -4659,7 +4789,7 @@ const IE_HOME_HTML = '<!doctype html><html><head><meta charset="utf-8">'
   + 'a.big:active{border-color:#0a0a0a #fff #fff #0a0a0a;}'
   + 'a.big + a.big{margin-top:6px;}'
   + '.tip{font-size:11px;color:#404040;margin-top:8px;}'
-  + '.foot{margin-top:8px;font-size:11px;color:#808080;text-align:center;}'
+  + '.foot{margin-top:8px;font-size:11px;color:#5a5a5a;text-align:center;}'
   + '</style></head><body><div class="wrap"><div class="page">'
   + '<h1>知行工作室</h1>'
   + '<p class="sub">Zhixing Studio · 知行合一 · <a href="https://w3b.pub/" target="_blank" rel="noopener noreferrer">https://w3b.pub/</a></p><hr>'
@@ -4817,7 +4947,13 @@ async function handle(req, res) {
     }
     if (rest === '/api/chunk') return handleChunk(req, res, url);
     if (rest === '/api/finish') return handleFinish(req, res, m[1]);
-    if (rest === '/api/text') return handleText(req, res, m[1]);
+    if (rest === '/api/text') {
+      // 文字分享同样写盘，之前漏了限流：脚本可以不受约束地刷满磁盘。
+      if (rateLimited(clientIp(req))) {
+        return sendJson(res, 429, { error: '操作过于频繁，请稍后再试' });
+      }
+      return handleText(req, res, m[1]);
+    }
     if (rest === '/api/delete') {
       if (!P.canDelete) {
         return sendJson(res, 403, { error: '只有管理链接可以删除文件', ...P });
@@ -7056,19 +7192,22 @@ self.addEventListener('fetch', function (e) {
     return;
   }
 
-  // 应用外壳：cache-first，未命中回源并回填
+  // 应用外壳：cache-first，未命中回源并回填。
+  // 与根 SW 同一处坑：页面给静态资源加 ?v= 版本号时，按完整 request 匹配会落空，
+  // 离线首启就拿不到 CSS/JS。统一按 pathname 存取，版本号只当缓存破坏器用。
   if (/\\.(css|js|webmanifest|ico|png|svg)$/.test(path) || path.charAt(path.length - 1) === '/') {
+    var key = url.pathname;
     e.respondWith(
-      caches.match(req).then(function (r) {
+      caches.match(key).then(function (r) {
         if (r) return r;
         return fetch(req).then(function (res) {
           if (res && res.status === 200 && res.type === 'basic') {
             var copy = res.clone();
-            caches.open(SHELL_CACHE).then(function (c) { c.put(req, copy); });
+            caches.open(SHELL_CACHE).then(function (c) { c.put(key, copy); });
           }
           return res;
         });
-      })
+      }).catch(function () { return fetch(req); })
     );
   }
   // 其余（/api/*、/v/*、/d/* 等）：不拦截，直连网络
@@ -7307,18 +7446,22 @@ self.addEventListener('fetch', function (e) {
     return;
   }
 
-  // 外壳资源：cache-first
+  // 外壳资源：cache-first。
+  // 踩过的坑：页面里 home.css / home.js 带 ?v=5 版本号，而预缓存用的是裸路径，
+  // 直接 caches.match(req) 会因查询串不匹配永远落空 —— 离线冷启动就没有 CSS/JS。
+  // 这里统一按 pathname 存取，把版本号当作纯粹的缓存破坏器。
+  var key = url.pathname;
   e.respondWith(
-    caches.match(req).then(function (r) {
+    caches.match(key).then(function (r) {
       if (r) return r;
       return fetch(req).then(function (res) {
         if (res && res.status === 200 && res.type === 'basic') {
           var copy = res.clone();
-          caches.open(CACHE).then(function (c) { c.put(req, copy); });
+          caches.open(CACHE).then(function (c) { c.put(key, copy); });
         }
         return res;
       });
-    })
+    }).catch(function () { return fetch(req); })
   );
 });
 `;
@@ -7348,6 +7491,10 @@ function listenOn(host) {
 }
 
 (async function main() {
+  if (ADMIN_PASS_IS_DEFAULT) {
+    console.warn('⚠  未设置环境变量 ADMIN_PASS，使用内置默认口令。'
+      + ' 任何拿到页面的人都能以管理员登录 —— 公网部署前请设置 ADMIN_PASS。');
+  }
   await fsp.mkdir(FILES_DIR, { recursive: true });
   await fsp.mkdir(TMP_DIR, { recursive: true });
   await loadIndex();
