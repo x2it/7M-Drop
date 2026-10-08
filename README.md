@@ -12,6 +12,8 @@
 > two-tier tokens, chunked upload, inline preview, QR sharing, installable PWA.
 > `node server.js` and done.
 
+<img src="https://raw.githubusercontent.com/x2it/7M-Drop/main/banner.png" alt="7喵快传 · 7M-Drop" width="100%">
+
 ![界面](docs/ui.png)
 
 <sub>更多截图：[Win98 桌面](docs/desktop.png) · [文件页预览](docs/filepage.png) · [手机桌面](docs/mobile-desktop.png) · [二维码分享](docs/qr-share.png)</sub>
@@ -298,4 +300,4 @@ node quotatest.js                                   # 配额与限流（自行�
 
 ## 许可证
 
-[MIT](LICENSE) © 2026 [知行工作室](https://w3b.pub)
+[MIT](LICENSE) © 2026 知行工作室 Zhixing Studio · [https://w3b.pub/](https://w3b.pub/) · support@w3b.pub
