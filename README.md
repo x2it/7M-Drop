@@ -1,5 +1,8 @@
 # 7M-Drop · 7喵快传
 
+> **在线体验：https://coffee.app.workbuddy.host/**  （免安装，浏览器直接打开）
+
+
 **单文件、零 npm 依赖的自托管文件中转服务，带一个能装进手机的 Win98 桌面。**
 
 复制一个 `server.js` 到任何有 Node 的机器上，`node server.js` 就能跑。
