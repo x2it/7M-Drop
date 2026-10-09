@@ -1,7 +1,4 @@
-# 7M-Drop · 7喵快传
-
-> **在线体验：https://coffee.app.workbuddy.host/**  （免安装，浏览器直接打开）
-
+# 7MD · 7喵快传
 
 **单文件、零 npm 依赖的自托管文件中转服务，带一个能装进手机的 Win98 桌面。**
 
@@ -12,8 +9,6 @@
 > two-tier tokens, chunked upload, inline preview, QR sharing, installable PWA.
 > `node server.js` and done.
 
-<img src="https://raw.githubusercontent.com/x2it/7M-Drop/main/banner.png" alt="7喵快传 · 7M-Drop" width="100%">
-
 ![界面](docs/ui.png)
 
 <sub>更多截图：[Win98 桌面](docs/desktop.png) · [文件页预览](docs/filepage.png) · [手机桌面](docs/mobile-desktop.png) · [二维码分享](docs/qr-share.png)</sub>
@@ -22,7 +17,7 @@
 
 > **一个文件，一套做对了的权限模型，一个能装进手机的复古桌面。**
 
-多数文件分享工具在解决「怎么把文件传出去」；7M-Drop 想多回答两个问题：
+多数文件分享工具在解决「怎么把文件传出去」；7MD 想多回答两个问题：
 
 1. **它能不能塞进你现在就有的环境？** —— 不是「先装 Docker、再配数据库、再挂反代」，
    而是把一个 `server.js` 丢过去，`node server.js`，完事。零 npm 依赖，只用 Node 内置模块。
@@ -257,6 +252,7 @@ Win98 桌面登录框里 `Administrator` 的默认口令（见环境变量表）
 | 桌面 | **127 项**验收（无头 Chromium 直连 CDP）：窗口/扫雷三档难度/屏保/登录/贪吃蛇最大化全流程 |
 | PWA | 33 项：manifest、Service Worker 策略、图标、CSP、首页隔离 |
 | 配额与限流 | 4 项，单起一个 1MB 上限的实例实测：文字分享越界 507、分片 init 越界 507、写接口触发 429 |
+| 边界与安全 | 16 项，真实 HTTP 打实例：畸形 JSON 与超限区分 400/413、文件名路径穿越、Content-Disposition 防注入、Range 后缀、权限隔离与 meta 不泄露 |
 | 大文件 | 100MB 分片上传，下载回来 SHA256 逐字节一致 |
 | 二维码 | jsQR 真实解码 v1–v34、四个纠错级别、中文、emoji；并用真实浏览器 canvas 渲染后截图反解 |
 | 移动端 | CDP 真机仿真 390×844：确认无横向溢出、桌面可滚、窗口自动铺满、输入框 16px |
@@ -276,6 +272,7 @@ node pwtest.js     http://127.0.0.1:8080            # PWA 自测
 node desktoptest.js http://127.0.0.1:8080           # 桌面验收（需 Chromium）
 node bigtest.js    http://127.0.0.1:8080 <管理口令> 20
 node quotatest.js                                   # 配额与限流（自行起实例，不碰生产数据）
+node edgetest.js                                   # 边界与安全（打运行中的实例）
 ```
 
 **`server.js` 是构建产物**，改界面请改 `_newui.js`。
@@ -300,4 +297,4 @@ node quotatest.js                                   # 配额与限流（自行�
 
 ## 许可证
 
-[MIT](LICENSE) © 2026 知行工作室 Zhixing Studio · [https://w3b.pub/](https://w3b.pub/) · support@w3b.pub
+[MIT](LICENSE) © 2026 [知行工作室](https://w3b.pub)

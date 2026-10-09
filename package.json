@@ -15,7 +15,8 @@
     "test:perm": "node permtest.js",
     "test:pwa": "node pwtest.js",
     "test:desktop": "node desktoptest.js",
-    "test:quota": "node quotatest.js"
+    "test:quota": "node quotatest.js",
+    "test:edge": "node edgetest.js"
   },
   "engines": {
     "node": ">=18"
@@ -41,6 +42,6 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/x2it/7MD.git"
+    "url": "git+https://github.com/x2it/7M-Drop.git"
   }
 }
