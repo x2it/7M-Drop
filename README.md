@@ -1,4 +1,8 @@
-# 7MD · 7喵快传
+# 7M-Drop · 7喵快传
+
+**当前版本 Current version：1.2.0**（见 `package.json`）
+
+> **在线体验：https://coffee.app.workbuddy.host/**  （免安装，浏览器直接打开）
 
 **单文件、零 npm 依赖的自托管文件中转服务，带一个能装进手机的 Win98 桌面。**
 
@@ -9,6 +13,8 @@
 > two-tier tokens, chunked upload, inline preview, QR sharing, installable PWA.
 > `node server.js` and done.
 
+<img src="https://raw.githubusercontent.com/x2it/7M-Drop/main/banner.png" alt="7喵快传 · 7M-Drop" width="100%">
+
 ![界面](docs/ui.png)
 
 <sub>更多截图：[Win98 桌面](docs/desktop.png) · [文件页预览](docs/filepage.png) · [手机桌面](docs/mobile-desktop.png) · [二维码分享](docs/qr-share.png)</sub>
@@ -17,7 +23,7 @@
 
 > **一个文件，一套做对了的权限模型，一个能装进手机的复古桌面。**
 
-多数文件分享工具在解决「怎么把文件传出去」；7MD 想多回答两个问题：
+多数文件分享工具在解决「怎么把文件传出去」；7M-Drop 想多回答两个问题：
 
 1. **它能不能塞进你现在就有的环境？** —— 不是「先装 Docker、再配数据库、再挂反代」，
    而是把一个 `server.js` 丢过去，`node server.js`，完事。零 npm 依赖，只用 Node 内置模块。
@@ -297,4 +303,4 @@ node edgetest.js                                   # 边界与安全（打运行
 
 ## 许可证
 
-[MIT](LICENSE) © 2026 [知行工作室](https://w3b.pub)
+[MIT](LICENSE) © 2026 知行工作室 Zhixing Studio · [https://w3b.pub/](https://w3b.pub/) · support@w3b.pub
