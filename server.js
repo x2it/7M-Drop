@@ -2,7 +2,8 @@
 'use strict';
 
 /**
- * 7喵快传 · 单文件零依赖文件中转服务器
+ * 7喵快传（npm 包名 7md）· 一个文件，一个桌面
+ * 单文件零依赖自托管文件中转服务，带一套能装进手机的 Win98 桌面。
  *
  * 用法:
  *   node server.js                          # 管理/分享口令均随机生成
@@ -52,6 +53,14 @@ const MAX_BYTES = Math.max(1, Number(process.env.MAX_MB || 2048)) * 1024 * 1024;
 const MAX_TEXT_BYTES = 512 * 1024;
 const TTL_HOURS = Math.max(0, Number(process.env.TTL_HOURS ?? 24));
 const CHUNK_SIZE = 8 * 1024 * 1024; // 客户端分片大小，低于 Cloudflare 免费版 100MB 请求上限
+// sweep 可调参数：默认值就是线上行为，测试可用更短的值实测
+// 「活跃中的长上传不被误杀」与「孤儿文件被回收」。
+//   idle    上传会话多久无活动视为死会话（期间每收到一个分片都会刷新）
+//   interval sweep 运行周期
+//   orphan  files/ 里不在索引的文件的 mtime 保护期，超过才回收
+const SWEEP_IDLE_MS = Math.max(1000, Number(process.env.SWEEP_IDLE_MS ?? 2 * 3600 * 1000));
+const SWEEP_INTERVAL_MS = Math.max(1000, Number(process.env.SWEEP_INTERVAL_MS ?? 60 * 1000));
+const SWEEP_ORPHAN_MS = Math.max(1000, Number(process.env.SWEEP_ORPHAN_MS ?? 6 * 3600 * 1000));
 
 // ── 两级权限 ────────────────────────────────────────────────
 // 管理口令：全部权限（含删除）。
@@ -97,7 +106,7 @@ const mbText = (bytes) => (bytes / 1048576).toFixed(1) + ' MB';
 
 /** @type {Array<{id:string,name:string,size:number,type:string,time:number,expires:number,downloads:number,kind:'file'|'text'}>} */
 let index = [];
-/** @type {Map<string,{name:string,size:number,type:string,tmp:string,received:number,nextIndex:number,createdAt:number}>} */
+/** @type {Map<string,{name:string,size:number,type:string,tmp:string,received:number,nextIndex:number,createdAt:number,lastAt:number}>} */
 const uploads = new Map();
 
 const now = () => Math.floor(Date.now() / 1000);
@@ -135,6 +144,20 @@ function saveIndex() {
     await fsp.rename(tmp, INDEX_FILE);
   }).catch((err) => console.error('[index] 写入失败:', err.message));
   return saveChain;
+}
+
+// 下载计数防抖：serveBlob 每被下载一次就全量重写 index.json，
+// 热门文件被频繁预览时这是纯浪费。计数先只落内存，3 秒内合并成一次落盘；
+// sweep 与退出路径都会强制 flush，计数不会丢。
+let flushTimer = null;
+function scheduleFlush() {
+  if (flushTimer) return;
+  flushTimer = setTimeout(() => { flushTimer = null; saveIndex(); }, 3000);
+  if (flushTimer.unref) flushTimer.unref();
+}
+function flushIndexNow() {
+  if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+  return saveIndex();
 }
 
 // ───────────────────────────── 工具 ─────────────────────────────
@@ -365,7 +388,7 @@ async function handleInit(req, res) {
 
   uploads.set(id, {
     name, size, type, tmp,
-    received: 0, nextIndex: 0, createdAt: Date.now(),
+    received: 0, nextIndex: 0, createdAt: Date.now(), lastAt: Date.now(),
   });
   // 会话一建立就占账本：从此刻起它写的每个字节都不会被别的请求重复分配，
   // 直到 finish 入索引（那时 totalBytes 自然接管）或 abort 释放。
@@ -576,6 +599,9 @@ async function handleChunk(req, res, url) {
 
   up.received += received;
   up.nextIndex += 1;
+  // 刷新最后活跃时间：sweep 按它判断会话是否过期。
+  // 只用 createdAt 会把「慢速传了 2 小时的大文件」误判成死会话 abort 掉。
+  up.lastAt = Date.now();
   // 这里不能释放账本：本片已写进 tmp、还没进索引，若此刻释放，
   // 下一片到来之前这段时间这份字节对配额完全隐形。留到 finish / abort 再清。
   inflightBytes.set(ckey, up.received);
@@ -781,7 +807,7 @@ async function serveBlob(req, res, rec, inline) {
   };
 
   rec.downloads += 1;
-  saveIndex();
+  scheduleFlush();
 
   const range = req.headers.range;
   if (range) {
@@ -828,9 +854,9 @@ async function sweep() {
     console.log('[sweep] 清理过期文件 ' + expired.length + ' 个');
   }
 
-  const cutoff = Date.now() - 2 * 3600 * 1000;
+  const cutoff = Date.now() - SWEEP_IDLE_MS;
   for (const [id, up] of uploads) {
-    if (up.createdAt < cutoff) await abortUpload(id);
+    if (up.lastAt < cutoff) await abortUpload(id);
   }
 
   try {
@@ -843,6 +869,27 @@ async function sweep() {
       if (st && st.mtimeMs < cutoff) await fsp.rm(fp, { force: true }).catch(() => {});
     }
   } catch { /* tmp 目录可能不存在 */ }
+
+  // 孤儿 blob 回收：rename 成功但还没进索引就崩溃、或写索引失败时，
+  // 文件会留在 files/ 里却不在 index 中 —— 上面的过期清理只看索引，
+  // 永远碰不到它，磁盘就这样一点点漏掉。这里按「不在索引 + mtime 超 6h」
+  // 双条件回收；6h 保护期远大于「rename → 入索引」的正常窗口（<1s），
+  // 绝不会误删正在落盘的文件。
+  try {
+    const live = new Set(index.map((r) => r.id));
+    const blobs = await fsp.readdir(FILES_DIR);
+    const nowMs = Date.now();
+    let orphans = 0;
+    for (const n of blobs) {
+      if (live.has(n)) continue;
+      const st = await fsp.stat(path.join(FILES_DIR, n)).catch(() => null);
+      if (st && nowMs - st.mtimeMs > SWEEP_ORPHAN_MS) {
+        await fsp.rm(path.join(FILES_DIR, n), { force: true }).catch(() => {});
+        orphans++;
+      }
+    }
+    if (orphans) console.log('[sweep] 清理孤儿文件 ' + orphans + ' 个');
+  } catch { /* files 目录可能不存在 */ }
 }
 
 // ───────────────────────── 路由 ─────────────────────────
@@ -917,7 +964,7 @@ function manifestJson(token) {
   return JSON.stringify({
     name: '7喵快传',
     short_name: '7喵快传',
-    description: '单文件、零依赖的自托管文件中转服务',
+    description: '一个文件，一个桌面 —— 单文件、零依赖的自托管文件中转服务',
     lang: 'zh-CN',
     dir: 'ltr',
     start_url: root,
@@ -959,7 +1006,8 @@ const HOME_PAGE = `<!DOCTYPE html>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="robots" content="noindex,nofollow">
-<title>7喵快传 · 单文件自托管文件服务</title>
+<title>7喵快传 · 一个文件，一个桌面</title>
+<meta name="description" content="一个文件，一个桌面 —— 单文件、零依赖的自托管文件中转服务，带一套能装进手机的 Win98 桌面。">
 <link rel="icon" href="/favicon.ico">
 <link rel="apple-touch-icon" href="/icons/icon-192.png">
 <link rel="manifest" href="/manifest.webmanifest">
@@ -1116,7 +1164,7 @@ const HOME_PAGE = `<!DOCTYPE html>
         <iframe id="ieFrame" title="Internet Explorer" referrerpolicy="no-referrer"></iframe>
       </div>
       <div class="statusbar">
-        <span class="grow" id="ieStatus">知行工作室</span>
+        <span class="grow" id="ieStatus">知行工作室 · Zhixing Studio</span>
       </div>
     </div>
 
@@ -4792,7 +4840,7 @@ const IE_HOME_HTML = '<!doctype html><html><head><meta charset="utf-8">'
   + '.foot{margin-top:8px;font-size:11px;color:#5a5a5a;text-align:center;}'
   + '</style></head><body><div class="wrap"><div class="page">'
   + '<h1>知行工作室</h1>'
-  + '<p class="sub">知行工作室 · 知行合一 · <a href="https://w3b.pub/" target="_blank" rel="noopener noreferrer">https://w3b.pub/</a></p><hr>'
+  + '<p class="sub">Zhixing Studio · 知行合一 · <a href="https://w3b.pub/" target="_blank" rel="noopener noreferrer">https://w3b.pub/</a></p><hr>'
   + '<p class="intro">以知行合一的笨办法，做真正能用的小工具。'
   + '7喵快传 —— 单文件、零依赖的自托管文件中转服务 —— 就是其中之一。</p>'
   + '<a class="big" href="https://w3b.pub/" target="_blank" rel="noopener noreferrer">知行工作室 · 官网</a>'
@@ -4979,7 +5027,8 @@ const PAGE = [
   '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">',
   '<meta name="mobile-web-app-capable" content="yes">',
   '<meta name="robots" content="noindex,nofollow">',
-  '<title>7喵快传</title>',
+  '<title>7喵快传 · 一个文件，一个桌面</title>',
+  '<meta name="description" content="一个文件，一个桌面 —— 单文件、零依赖的自托管文件中转服务，带一套能装进手机的 Win98 桌面。">',
   '<link rel="icon" href="./favicon.ico">',
   '<link rel="apple-touch-icon" href="./icons/icon-192.png">',
   '<link rel="manifest" href="./manifest.webmanifest">',
@@ -6460,6 +6509,9 @@ const APP_JS = `
 
   load();
   setInterval(function () {
+    // 页面被切到后台时跳过本轮：省流量省电，也少一次无谓的列表渲染。
+    // online 事件已负责恢复在线后的立即刷新，不会漏数据。
+    if (document.hidden) return;
     if (!pending && viewer.hidden && sheet.hidden && qrModal.hidden && $('infoModal').hidden) load();
   }, 5000);
 })();
@@ -7154,14 +7206,29 @@ self.addEventListener('activate', function (e) {
 
 // 页面预览图片后会送来 canvas 生成的缩略图（≤256px JPEG），写进专用缓存。
 // cache key 用 /thumb/<id>，与原图 /v/<id> 完全隔离，绝不污染原图预览。
+// 缩略图缓存条数上限。只 put 不淘汰会让 THUMB_CACHE 随预览数量无限膨胀
+// （每条 Cache-Control 一年、activate 又只按版本名清理旧缓存），
+// 长期使用等于白占用户存储。这里做最简 LRU：每条 TTL 一年、
+// 先 delete 再 put 保证刚写入的排在枚举尾部，超出上限就删头部最旧的几条。
+// 误淘汰的后果仅仅是重新生成一张缩略图，无害。
+var THUMB_MAX = 200;
 self.addEventListener('message', function (e) {
   var d = e.data;
   if (!d || d.type !== 'thumb' || !d.id || !d.blob) return;
   e.waitUntil(
     caches.open(THUMB_CACHE).then(function (c) {
-      return c.put('/thumb/' + d.id, new Response(d.blob, {
-        headers: { 'Content-Type': d.blob.type || 'image/jpeg', 'Cache-Control': 'max-age=31536000' }
-      }));
+      var key = '/thumb/' + d.id;
+      return c.delete(key).then(function () {
+        return c.put(key, new Response(d.blob, {
+          headers: { 'Content-Type': d.blob.type || 'image/jpeg', 'Cache-Control': 'max-age=31536000' }
+        }));
+      }).then(function () {
+        return c.keys();
+      }).then(function (keys) {
+        if (keys.length <= THUMB_MAX) return;
+        var stale = keys.slice(0, keys.length - THUMB_MAX);
+        return Promise.all(stale.map(function (r) { return c.delete(r); }));
+      });
     })
   );
 });
@@ -7499,7 +7566,7 @@ function listenOn(host) {
   await fsp.mkdir(TMP_DIR, { recursive: true });
   await loadIndex();
   await sweep();
-  setInterval(() => { sweep().catch(() => {}); }, 60 * 1000);
+  setInterval(() => { sweep().catch(() => {}); }, SWEEP_INTERVAL_MS);
 
   let bound = HOST;
   try {
@@ -7544,5 +7611,22 @@ function listenOn(host) {
   console.log('');
 })();
 
-process.on('SIGINT', () => { console.log('\n正在退出…'); server.close(() => process.exit(0)); });
-process.on('SIGTERM', () => { server.close(() => process.exit(0)); });
+// 退出前收尾：abort 掉未完成的上传会话（tmp 不留到下次 sweep 才回收）、
+// flush 防抖期间累积的下载计数。server.close 等长连接自然结束，但可能被
+// 挂起的请求拖住，3 秒兜底强制退出，保证 Ctrl-C / kill 都能干脆退出。
+let shuttingDown = false;
+function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log('\n正在退出…');
+  server.close(async () => {
+    try {
+      await Promise.all(Array.from(uploads.keys()).map((id) => abortUpload(id)));
+      await flushIndexNow();
+    } catch { /* 退出路径不因清理失败而卡住 */ }
+    process.exit(0);
+  });
+  setTimeout(() => process.exit(0), 3000).unref();
+}
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);

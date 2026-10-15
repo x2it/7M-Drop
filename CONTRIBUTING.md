@@ -44,7 +44,10 @@ node _build.js && node --check server.js   # 构建 + 语法
 node selftest.js http://127.0.0.1:8080 <分享口令> <管理口令>   # 28 项接口
 node permtest.js http://127.0.0.1:8080 <管理口令> <分享口令>  # 21 项权限
 node desktoptest.js http://127.0.0.1:8080                    # 127 项桌面验收（需 Chromium）
+node pwtest.js     http://127.0.0.1:8080            # 33 项 PWA
+node edgetest.js   http://127.0.0.1:8080 <管理口令> <分享口令>  # 16 项边界与安全
 node quotatest.js                                            # 4 项配额与限流（自起实例）
+node sweeptest.js                                           # 13 项清理与退出（自起实例）
 ```
 
 涉及前端交互的改动，**不要只看代码就说没问题**——用无头浏览器真跑一遍。

@@ -1,4 +1,4 @@
-# 7MD（7喵快传）· 部署一个可传文件的线上服务器
+# 7喵快传（npm 包名 7md）· 部署一个可传文件的线上服务器
 
 > **这份文档是写给 AI Agent 的。** 把它整份交给任意具备终端和联网能力的 Agent，
 > 它就能从零把服务跑起来，不需要用户再补充信息。
@@ -1140,7 +1140,7 @@ const HOME_PAGE = `<!DOCTYPE html>
         <iframe id="ieFrame" title="Internet Explorer" referrerpolicy="no-referrer"></iframe>
       </div>
       <div class="statusbar">
-        <span class="grow" id="ieStatus">知行工作室</span>
+        <span class="grow" id="ieStatus">知行工作室 · Zhixing Studio</span>
       </div>
     </div>
 
@@ -4750,7 +4750,7 @@ const IE_HOME_HTML = '<!doctype html><html><head><meta charset="utf-8">'
   + '.foot{margin-top:8px;font-size:11px;color:#808080;text-align:center;}'
   + '</style></head><body><div class="wrap"><div class="page">'
   + '<h1>知行工作室</h1>'
-  + '<p class="sub">知行工作室 · 知行合一 · <a href="https://w3b.pub/" target="_blank" rel="noopener noreferrer">https://w3b.pub/</a></p><hr>'
+  + '<p class="sub">Zhixing Studio · 知行合一 · <a href="https://w3b.pub/" target="_blank" rel="noopener noreferrer">https://w3b.pub/</a></p><hr>'
   + '<p class="intro">以知行合一的笨办法，做真正能用的小工具。'
   + '7喵快传 —— 单文件、零依赖的自托管文件中转服务 —— 就是其中之一。</p>'
   + '<a class="big" href="https://w3b.pub/" target="_blank" rel="noopener noreferrer">知行工作室 · 官网</a>'

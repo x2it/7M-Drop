@@ -1,7 +1,7 @@
 {
   "name": "7md",
-  "version": "1.2.0",
-  "description": "7MD · 单文件、零 npm 依赖的自托管文件中转服务。带分级口令、分片上传、在线预览、二维码分享与可安装的 Win98 桌面 PWA。",
+  "version": "2.0.0",
+  "description": "7喵快传 · 一个文件，一个桌面。单文件、零 npm 依赖的自托管文件中转服务：分级口令、分片上传、在线预览、二维码分享，以及可安装的 Win98 桌面 PWA。",
   "license": "MIT",
   "author": "知行工作室 (https://w3b.pub)",
   "homepage": "https://w3b.pub",
@@ -16,7 +16,8 @@
     "test:pwa": "node pwtest.js",
     "test:desktop": "node desktoptest.js",
     "test:quota": "node quotatest.js",
-    "test:edge": "node edgetest.js"
+    "test:edge": "node edgetest.js",
+    "test:sweep": "node sweeptest.js"
   },
   "engines": {
     "node": ">=18"
@@ -32,6 +33,8 @@
   ],
   "keywords": [
     "7md",
+    "7喵快传",
+    "meowdrop",
     "file-transfer",
     "self-hosted",
     "zero-dependency",

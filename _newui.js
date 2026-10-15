@@ -11,7 +11,8 @@ const PAGE = [
   '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">',
   '<meta name="mobile-web-app-capable" content="yes">',
   '<meta name="robots" content="noindex,nofollow">',
-  '<title>7喵快传</title>',
+  '<title>7喵快传 · 一个文件，一个桌面</title>',
+  '<meta name="description" content="一个文件，一个桌面 —— 单文件、零依赖的自托管文件中转服务，带一套能装进手机的 Win98 桌面。">',
   '<link rel="icon" href="./favicon.ico">',
   '<link rel="apple-touch-icon" href="./icons/icon-192.png">',
   '<link rel="manifest" href="./manifest.webmanifest">',
@@ -1492,6 +1493,9 @@ const APP_JS = `
 
   load();
   setInterval(function () {
+    // 页面被切到后台时跳过本轮：省流量省电，也少一次无谓的列表渲染。
+    // online 事件已负责恢复在线后的立即刷新，不会漏数据。
+    if (document.hidden) return;
     if (!pending && viewer.hidden && sheet.hidden && qrModal.hidden && $('infoModal').hidden) load();
   }, 5000);
 })();
@@ -1545,14 +1549,29 @@ self.addEventListener('activate', function (e) {
 
 // 页面预览图片后会送来 canvas 生成的缩略图（≤256px JPEG），写进专用缓存。
 // cache key 用 /thumb/<id>，与原图 /v/<id> 完全隔离，绝不污染原图预览。
+// 缩略图缓存条数上限。只 put 不淘汰会让 THUMB_CACHE 随预览数量无限膨胀
+// （每条 Cache-Control 一年、activate 又只按版本名清理旧缓存），
+// 长期使用等于白占用户存储。这里做最简 LRU：每条 TTL 一年、
+// 先 delete 再 put 保证刚写入的排在枚举尾部，超出上限就删头部最旧的几条。
+// 误淘汰的后果仅仅是重新生成一张缩略图，无害。
+var THUMB_MAX = 200;
 self.addEventListener('message', function (e) {
   var d = e.data;
   if (!d || d.type !== 'thumb' || !d.id || !d.blob) return;
   e.waitUntil(
     caches.open(THUMB_CACHE).then(function (c) {
-      return c.put('/thumb/' + d.id, new Response(d.blob, {
-        headers: { 'Content-Type': d.blob.type || 'image/jpeg', 'Cache-Control': 'max-age=31536000' }
-      }));
+      var key = '/thumb/' + d.id;
+      return c.delete(key).then(function () {
+        return c.put(key, new Response(d.blob, {
+          headers: { 'Content-Type': d.blob.type || 'image/jpeg', 'Cache-Control': 'max-age=31536000' }
+        }));
+      }).then(function () {
+        return c.keys();
+      }).then(function (keys) {
+        if (keys.length <= THUMB_MAX) return;
+        var stale = keys.slice(0, keys.length - THUMB_MAX);
+        return Promise.all(stale.map(function (r) { return c.delete(r); }));
+      });
     })
   );
 });
