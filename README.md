@@ -1,5 +1,7 @@
 # 7喵快传
 
+<img src="https://raw.githubusercontent.com/x2it/7M-Drop/main/banner.png" alt="7喵快传" width="100%">
+
 > **一个文件，一个桌面。**
 
 单文件、零 npm 依赖的自托管文件中转服务，带一个能装进手机的 Win98 桌面。
