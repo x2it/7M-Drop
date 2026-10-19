@@ -1,4 +1,6 @@
-# 7喵快传
+# 7喵快传 · 7M-Drop
+
+![License](https://img.shields.io/badge/License-MIT-blue.svg)
 
 <img src="https://raw.githubusercontent.com/x2it/7M-Drop/main/banner.png" alt="7喵快传" width="100%">
 
@@ -293,7 +295,7 @@ SWEEP_IDLE_MS=3000 SWEEP_INTERVAL_MS=1500 SWEEP_ORPHAN_MS=10000 node sweeptest.j
 
 ## 踩过的坑
 
-写在[安装文档](ai-install/drop.md)和代码注释里，几条主要的：
+写在[安装文档](INSTALL.md)和代码注释里，几条主要的：
 
 - **`HOST` 设成 `0.0.0.0` 会让部分隧道 502**。它只吃 IPv4，而 Windows 上
   `localhost` 优先解析成 `::1`，SSH 类隧道连不上本机。绑 `::` 双栈即可。
@@ -310,4 +312,4 @@ SWEEP_IDLE_MS=3000 SWEEP_INTERVAL_MS=1500 SWEEP_ORPHAN_MS=10000 node sweeptest.j
 
 ## 许可证
 
-[MIT](LICENSE) © 2026 [知行工作室](https://w3b.pub)
+[MIT](LICENSE) © 2026 知行工作室 · [https://w3b.pub/](https://w3b.pub/) · support@w3b.pub
