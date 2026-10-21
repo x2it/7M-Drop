@@ -1418,7 +1418,7 @@ const HOME_PAGE = `<!DOCTYPE html>
       <div class="ctxi" data-ctx="props">属性</div>
     </div>
 
-    <!-- ═══════════ QQ 面板（仿 2008）═══════════ -->
+    <!-- ═══════════ QQ 面板（复刻 QQ 2008 正式版界面）═══════════ -->
     <div class="win95 appwin qqwin" id="qqWin" hidden>
       <div class="titlebar" data-drag>
         <span class="tb-icon tbqq"><span class="ico ico-qq ico-qq-s"></span></span>
@@ -1426,53 +1426,103 @@ const HOME_PAGE = `<!DOCTYPE html>
         <button class="wclose" data-close aria-label="关闭">×</button>
       </div>
       <div class="qq-panel">
+        <!-- 顶部个人区：头像 + 昵称 + 状态 + 个性签名（签名可点改，真实持久化） -->
         <div class="qq-top">
-          <span class="qq-av qq-av-me" id="qqMyAv"></span>
-          <div class="qq-me">
-            <span class="qq-me-name" id="qqMyName">7喵</span>
-            <span class="qq-me-sign" id="qqMySign">涐喟蕩漾，涐恠攵芓裡等哪囙兲。</span>
-          </div>
+          <span class="qq-av" id="qqMyAv"></span>
+          <span class="qq-me">
+            <span class="qq-me-row">
+              <span class="qq-me-name" id="qqMyName">7喵</span>
+              <select id="qqState" class="qq-state-sel" aria-label="我的状态">
+                <option value="online">在线</option>
+                <option value="hidden">隐身</option>
+              </select>
+            </span>
+            <span class="qq-me-sign" id="qqMySign" title="点击修改个性签名"></span>
+          </span>
         </div>
-        <div class="qq-era-row">
-          <label for="qqEra">年代</label>
-          <select id="qqEra" class="qq-era">
-            <option value="">真实日期</option>
-          </select>
-          <label for="qqState">状态</label>
-          <select id="qqState" class="qq-era">
-            <option value="online">在线</option>
-            <option value="hidden">隐身</option>
-          </select>
+        <!-- 查找联系人：真的按昵称/签名过滤下面的列表 -->
+        <div class="qq-search">
+          <span class="qq-sico"></span>
+          <input id="qqFind" type="text" placeholder="查找联系人…" aria-label="查找联系人"
+                 autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+        </div>
+        <!-- 三个 Tab：好友 / QQ群 / 最近联系人（真实切换） -->
+        <div class="qq-tabs" id="qqTabs">
+          <div class="qq-tab on" data-tab="friend"><span class="qq-tab-ico" id="qqTabIcoF"></span>好友</div>
+          <div class="qq-tab" data-tab="group"><span class="qq-tab-ico" id="qqTabIcoG"></span>QQ群</div>
+          <div class="qq-tab" data-tab="recent"><span class="qq-tab-ico" id="qqTabIcoR"></span>最近联系人</div>
         </div>
         <div class="qq-list" id="qqGroups"></div>
-        <div class="qq-bottom">
+        <!-- 底部工具栏：主菜单（音效/年代穿越/退出） + 在线统计 -->
+        <div class="qq-bar">
+          <button class="qq-bar-btn" id="qqMenuBtn" title="主菜单" aria-label="主菜单">
+            <span class="ico ico-qq ico-qq-s"></span>
+          </button>
           <span class="qq-online" id="qqOnline">在线 0 人</span>
-          <button class="btn95 qq-mini" id="qqSound">音效:开</button>
+        </div>
+        <!-- 主菜单弹出层：音效开关、年代穿越、退出 QQ（每一项都真实生效） -->
+        <div class="qq-menu" id="qqMenu" hidden>
+          <div class="qq-menu-lab">音效</div>
+          <div class="qq-menu-row"><button class="btn95 qq-mini" id="qqSound">音效:开</button></div>
+          <div class="qq-menu-sep"></div>
+          <div class="qq-menu-lab">穿越年代（消息时间戳/时钟同源）</div>
+          <div class="qq-menu-row">
+            <select id="qqEra" class="qq-era" aria-label="穿越年代">
+              <option value="">真实日期</option>
+            </select>
+          </div>
+          <div class="qq-menu-sep"></div>
+          <div class="qq-menu-row" id="qqQuitRow" data-a="quit">退出 QQ</div>
         </div>
       </div>
     </div>
 
-    <!-- ═══════════ QQ 会话窗口 ═══════════ -->
+    <!-- ═══════════ QQ 聊天窗口（复刻 QQ 2008）══════════ -->
     <div class="win95 appwin qqchatwin" id="qqChatWin" hidden>
       <div class="titlebar" data-drag>
         <span class="tb-icon tbqq"><span class="ico ico-qq ico-qq-s"></span></span>
-        <span class="tb-text" id="qqChatTitle">对话</span>
+        <span class="tb-text" id="qqChatTitle">与好友对话</span>
         <button class="wclose" data-close aria-label="关闭">×</button>
       </div>
       <div class="qq-chat">
-        <div class="qq-chat-log" id="qqLog"></div>
-        <div class="qq-typing" id="qqTyping" hidden><span class="qq-typing-dot"></span><span class="qq-typing-dot"></span><span class="qq-typing-dot"></span>对方正在输入…</div>
-        <div class="qq-send-row">
-          <input id="qqIn" class="qq-in" type="text" name="qq-msg" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" placeholder="说点什么…" aria-label="消息内容">
-          <button class="btn95" id="qqSendBtn">发送</button>
+        <!-- 对方信息区 -->
+        <div class="qq-ch-head">
+          <span class="qq-av" id="qqChatAv"></span>
+          <span class="qq-ch-pear">
+            <span class="qq-ch-name" id="qqChatName"></span>
+            <span class="qq-ch-sign" id="qqChatSign"></span>
+          </span>
         </div>
-        <div class="qq-ctrl">
-          <button class="btn95 qq-mini" id="qqPlayBtn">▶ 播放</button>
-          <button class="btn95 qq-mini" id="qqPauseBtn">‖ 暂停</button>
-          <button class="btn95 qq-mini" id="qqStepBtn">▸ 单步</button>
-          <button class="btn95 qq-mini" id="qqReplayBtn">↺ 重播</button>
-          <button class="btn95 qq-mini" id="qqClearBtn">清空记录</button>
+        <!-- 消息区（左）+ 对方资料栏（右），与真实 QQ2008 一致 -->
+        <div class="qq-ch-main">
+          <div class="qq-ch-log" id="qqLog"></div>
+          <div class="qq-ch-side" id="qqChatSide"></div>
         </div>
+        <div class="qq-typing" id="qqTyping" hidden><span class="qq-tdot"></span><span class="qq-tdot"></span><span class="qq-tdot"></span>对方正在输入…</div>
+        <!-- 工具栏：字体 / 表情 / 播放控制，每一项都真实可用 -->
+        <div class="qq-ch-tools">
+          <button class="qq-tool" id="qqFontBtn" title="切换字体大小" aria-label="切换字体大小">A</button>
+          <button class="qq-tool" id="qqFaceBtn" title="表情" aria-label="插入表情">☺</button>
+          <span class="qq-tool-sep"></span>
+          <button class="qq-tool" id="qqPlayBtn">▶ 播放</button>
+          <button class="qq-tool" id="qqPauseBtn">‖ 暂停</button>
+          <button class="qq-tool" id="qqStepBtn">▸ 单步</button>
+          <button class="qq-tool" id="qqReplayBtn">↺ 重播</button>
+          <button class="qq-tool" id="qqClearBtn">清空记录</button>
+          <span class="spacer"></span>
+        </div>
+        <div class="qq-ch-input">
+          <textarea id="qqIn" class="qq-in" rows="3" name="qq-msg" autocomplete="off"
+                    autocapitalize="off" autocorrect="off" spellcheck="false"
+                    data-1p-ignore data-lpignore="true" placeholder="说点什么…" aria-label="消息内容"></textarea>
+        </div>
+        <div class="qq-ch-foot">
+          <button class="btn95" id="qqSendBtn">发送(S)</button>
+          <button class="btn95" id="qqCloseBtn">关闭(C)</button>
+        </div>
+      </div>
+    </div>
+
       </div>
     </div>
   </div>
@@ -2775,118 +2825,218 @@ canvas#game {
 .ico-qq-s::before { transform: scale(.5); transform-origin: 0 0; }
 .tbqq { background: none; box-shadow: none; }
 
-/* ── QQ 面板 ── */
-.qqwin { left: auto; right: 14px; top: 14px; transform: none; width: min(94vw, 300px); }
+/* ── 复古 QQ：按 QQ 2008 正式版真实界面复刻 ──
+   取经典「蓝色经典」皮肤：窗口标题栏蓝渐变、好友列表纯白、
+   分组栏浅蓝渐变、底部工具栏浅蓝；字体 Tahoma/宋体 12px。
+   结构与真实一致：个人区 → 搜索框 → 分组 Tab → 好友列表（分组可折叠）
+   → 底部工具栏。群在独立的「QQ群」Tab 里，与真实 QQ 一致。 */
+.qqwin { left: auto; right: 14px; top: 14px; transform: none; width: min(94vw, 288px); }
 .qq-panel {
-  display: flex; flex-direction: column;
-  background: #ece9d8;
-  font: var(--ui-fs) "MS Sans Serif", Tahoma, sans-serif;
+  display: flex; flex-direction: column; min-height: 0;
+  background: #f4f9fd; color: #10314c;
+  font: 12px/1.4 Tahoma, "宋体", SimSun, "MS Sans Serif", sans-serif;
 }
+/* 顶部个人区：蓝渐变条 + 头像 + 昵称 + 状态 + 个性签名 */
 .qq-top {
-  display: flex; align-items: center; gap: 9px;
-  padding: 8px; color: #fff;
-  background: linear-gradient(180deg, #46bdf7, #1183c8);
-  box-shadow: inset 0 0 0 1px #0b5d8f;
+  display: flex; align-items: center; gap: 8px; padding: 7px 8px; color: #fff;
+  background: linear-gradient(180deg, #6dc0f3 0%, #3d97d8 46%, #2b81c2 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5);
 }
-.qq-av { flex: none; position: relative; width: 32px; height: 32px; background: #fff; box-shadow: 0 0 0 1px #0a0a0a; }
-.qq-me { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.qq-me-name { font-size: 12px; font-weight: bold; text-shadow: 1px 1px 0 #0b5d8f; }
-.qq-me-sign { font-size: 10px; opacity: .93; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.qq-era-row { display: flex; align-items: center; gap: 5px; padding: 6px 8px 4px; font-size: 10px; color: #404040; }
-.qq-era-row label { flex: none; }
-.qq-era {
-  flex: 1; min-width: 0; font: 10px "MS Sans Serif", Tahoma, sans-serif;
-  padding: 2px 3px; background: #fff; border: none; min-height: 20px;
-  box-shadow: inset -1px -1px #fff, inset 1px 1px #808080,
-              inset -2px -2px #dfdfdf, inset 2px 2px #0a0a0a;
+.qq-av { flex: none; position: relative; width: 38px; height: 38px; background: #fff; box-shadow: 0 0 0 1px #fff, 0 0 0 2px #17639a; }
+.qq-me { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.qq-me-row { display: flex; align-items: center; gap: 5px; }
+.qq-me-name {
+  flex: 1; min-width: 0; font-size: 13px; font-weight: bold; color: #fff;
+  text-shadow: 0 1px 1px rgba(0, 52, 96, .55);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.qq-era:focus { outline: none; }
+.qq-me-sign {
+  font-size: 11px; color: #eaf6ff; cursor: text;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* 状态下拉：真实 QQ 在昵称旁边，做成半透明的小选择框 */
+.qq-state-sel {
+  flex: none; font: 11px Tahoma, "宋体", sans-serif; color: #fff;
+  padding: 1px 2px; background: rgba(255, 255, 255, .22); border: 1px solid rgba(255, 255, 255, .55);
+  min-height: 18px; cursor: default;
+}
+.qq-state-sel option { color: #000; background: #fff; }
+/* 搜索框行 */
+.qq-search { display: flex; align-items: center; gap: 5px; padding: 5px 7px; background: #e9f3fb; border-bottom: 1px solid #b7d3e8; }
+.qq-sico { flex: none; position: relative; width: 13px; height: 13px; }
+.qq-sico::before {
+  content: ''; position: absolute; left: 0; top: 0; width: 8px; height: 8px;
+  border: 2px solid #4a7fa8; border-radius: 50%;
+}
+.qq-sico::after {
+  content: ''; position: absolute; left: 7px; top: 8px; width: 6px; height: 2px;
+  background: #4a7fa8; transform: rotate(45deg); transform-origin: 0 0;
+}
+.qq-search input {
+  flex: 1; min-width: 0; height: 20px; font: 11px Tahoma, "宋体", sans-serif;
+  padding: 1px 5px; color: #10314c; background: #fff; border: 1px solid #86aecd; box-shadow: none;
+}
+.qq-search input:focus { outline: none; border-color: #2b81c2; }
+/* 分组 Tab：好友 / QQ群 / 最近联系人 */
+.qq-tabs { display: flex; background: linear-gradient(180deg, #fbfdff, #e4eff9); border-bottom: 1px solid #b7d3e8; }
+.qq-tab {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 1px;
+  padding: 3px 0 2px; font-size: 11px; color: #1d4e73; cursor: default;
+  border-right: 1px solid #d3e3f2;
+}
+.qq-tab:last-child { border-right: none; }
+.qq-tab:hover { background: #eef6fd; }
+.qq-tab.on { color: #0b4f7d; font-weight: bold; background: linear-gradient(180deg, #fff, #e9f4fd); box-shadow: inset 0 -2px 0 #2e83c4; }
+.qq-tab-ico { position: relative; width: 15px; height: 15px; }
+/* 好友列表 */
 .qq-list {
-  flex: 1 1 auto; min-height: 132px; max-height: 46vh; overflow: auto;
-  background: #fff; margin: 2px 6px 6px;
-  box-shadow: inset -1px -1px #fff, inset 1px 1px #808080,
-              inset -2px -2px #dfdfdf, inset 2px 2px #0a0a0a;
+  flex: 1 1 auto; min-height: 150px; max-height: 48vh; overflow: auto;
+  background: #fff; border-bottom: 1px solid #cfe1f0;
 }
 .qq-gname {
-  position: sticky; top: 0; z-index: 1;
-  font-size: 10px; font-weight: bold; color: #084d70;
-  background: #dcecf7; padding: 2px 6px;
-  border-bottom: 1px solid #b8d4e6;
+  display: flex; align-items: center; gap: 4px; padding: 2px 7px;
+  font-size: 11px; font-weight: bold; color: #0d4a78; cursor: default;
+  background: linear-gradient(180deg, #eaf4fc, #d7e9f8);
+  border-top: 1px solid #fff; border-bottom: 1px solid #bcd8ee;
 }
-.qq-f { display: flex; align-items: center; gap: 7px; padding: 3px 6px; cursor: default; }
-.qq-f:hover { background: #eaf4fb; }
-.qq-f.sel { background: #cde8f8; }
-.qq-f-av { flex: none; position: relative; width: 16px; height: 16px; }
-.qq-f.off .qq-f-av, .qq-f.off .qq-f-name { opacity: .45; }
+.qq-gtri { flex: none; width: 0; height: 0; border-left: 5px solid #2b6ea8; border-top: 4px solid transparent; border-bottom: 4px solid transparent; }
+.qq-gname.fold .qq-gtri { border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid #2b6ea8; }
+.qq-gnum { margin-left: auto; font-weight: normal; font-size: 10px; color: #4d7fa6; }
+.qq-f { display: flex; align-items: center; gap: 7px; padding: 3px 7px; cursor: default; }
+.qq-f:hover { background: #eaf5fe; }
+.qq-f.sel { background: linear-gradient(180deg, #d9edfc, #c4e1f8); }
+.qq-f-av { flex: none; position: relative; width: 20px; height: 20px; background: #fff; box-shadow: 0 0 0 1px #d3e3f1; }
+.qq-f.off .qq-f-av { filter: grayscale(1); opacity: .5; }
+.qq-f.off .qq-f-name { color: #8b98a5; }
 .qq-f-main { flex: 1; min-width: 0; }
-.qq-f-name { display: block; font-size: 11px; line-height: 1.35; }
-.qq-f-sign { display: block; font-size: 9.5px; color: #707070; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.qq-f.sel .qq-f-sign { color: #4a7a94; }
-.qq-f-era { font-style: normal; color: #909090; font-size: 9px; margin-left: 2px; }
+.qq-f-name { display: block; font-size: 12px; line-height: 1.35; color: #10314c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qq-f-sign { display: block; font-size: 11px; color: #8b98a5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qq-f.sel .qq-f-name { font-weight: bold; }
 .qq-badge {
-  flex: none; min-width: 15px; height: 15px; padding: 0 3px;
-  background: #d82828; color: #fff; font-size: 9px; line-height: 15px;
-  text-align: center; border-radius: 8px; box-shadow: 0 0 0 1px #8f1010;
+  flex: none; min-width: 16px; height: 15px; padding: 0 4px; background: #e60012; color: #fff;
+  font-size: 10px; line-height: 15px; text-align: center; border-radius: 7px;
 }
-.qq-bottom { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 0 8px 7px; }
-.qq-online { font-size: 10px; color: #404040; }
-.qq-mini { font-size: 10px; padding: 2px 8px; min-height: 20px; }
-.qq-empty { padding: 18px 10px; text-align: center; font-size: 10.5px; color: #909090; }
+.qq-empty { padding: 20px 10px; text-align: center; font-size: 11px; color: #8b98a5; }
+/* 底部工具栏 */
+.qq-bar {
+  display: flex; align-items: center; gap: 3px; padding: 3px 5px;
+  background: linear-gradient(180deg, #f2f8fd, #e0ecf8); border-top: 1px solid #fff;
+}
+.qq-bar-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 22px; height: 20px; background: none; border: 1px solid transparent; cursor: default;
+}
+.qq-bar-btn:hover { background: #d8ebfb; border-color: #8fb9d8; }
+.qq-online { margin-left: auto; font-size: 10px; color: #4a7796; padding-right: 2px; }
+/* 菜单弹出层（主菜单：音效 / 年代穿越 / 状态 / 退出） */
+.qq-menu {
+  position: absolute; z-index: 60; min-width: 150px; padding: 2px;
+  background: #fff; border: 1px solid #8fa8bd; box-shadow: 2px 2px 0 rgba(0, 0, 0, .18);
+  font: 12px/1.7 Tahoma, "宋体", sans-serif; color: #10314c;
+}
+.qq-menu-row { display: flex; align-items: center; gap: 6px; padding: 1px 8px; white-space: nowrap; }
+.qq-menu-row:hover { background: #d8ebfb; }
+.qq-menu-sep { height: 1px; margin: 3px 2px; background: #dde6ee; }
+.qq-menu-lab { font-size: 10px; color: #7b8fa3; padding: 1px 8px; }
 
-/* ── QQ 会话窗口 ── */
-.qqchatwin { width: min(94vw, 440px); }
+/* ── 聊天窗口：真实 QQ2008 布局 ──
+   对方信息区 → 消息区（左）+ 资料栏（右）→ 工具栏 → 输入区 → 发送/关闭 */
+.qqchatwin { width: min(94vw, 480px); }
 .qq-chat {
-  display: flex; flex-direction: column;
-  background: #ece9d8;
-  font: var(--ui-fs) "MS Sans Serif", Tahoma, sans-serif;
+  display: flex; flex-direction: column; min-height: 0;
+  background: #eef5fb; color: #000;
+  font: 12px/1.5 Tahoma, "宋体", SimSun, "MS Sans Serif", sans-serif;
 }
-.qq-chat-log {
-  flex: 1 1 auto; min-height: 210px; max-height: 46vh; overflow: auto;
-  display: flex; flex-direction: column; gap: 7px;
-  background: #fff; margin: 6px; padding: 9px;
-  box-shadow: inset -1px -1px #fff, inset 1px 1px #808080,
-              inset -2px -2px #dfdfdf, inset 2px 2px #0a0a0a;
+.qq-ch-head {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+  background: linear-gradient(180deg, #ffffff, #e9f3fb); border-bottom: 1px solid #b7d3e8;
 }
-.qq-sep {
-  align-self: center; font-size: 9.5px; color: #909090;
-  background: #f4f4f4; padding: 1px 9px; box-shadow: 0 0 0 1px #e0e0e0;
+.qq-ch-head .qq-av { width: 34px; height: 34px; box-shadow: 0 0 0 1px #fff, 0 0 0 2px #9dbdd8; }
+.qq-ch-pear { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.qq-ch-name { font-size: 12px; font-weight: bold; color: #12518a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qq-ch-sign { font-size: 11px; color: #7b8fa3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qq-ch-main { display: flex; flex: 1 1 auto; min-height: 0; }
+.qq-ch-log {
+  flex: 1 1 auto; min-width: 0; min-height: 200px; max-height: 44vh; overflow: auto;
+  background: #fff; padding: 8px 10px; border-right: 1px solid #cfe1f0;
 }
-.qq-row { display: flex; align-items: flex-start; gap: 6px; }
-.qq-row.me { flex-direction: row-reverse; }
-.qq-msg-av { flex: none; position: relative; width: 24px; height: 24px; }
-.qq-bwrap { max-width: 76%; display: flex; flex-direction: column; }
-.qq-row.me .qq-bwrap { align-items: flex-end; }
-.qq-bwho { font-size: 9.5px; color: #909090; padding: 0 2px 1px; }
-.qq-bubble {
-  padding: 4px 8px; font-size: 11.5px; line-height: 1.6;
-  background: #fff; color: #000; word-break: break-word; white-space: pre-wrap;
-  box-shadow: 0 0 0 1px #b5b5b5;
+.qq-ch-side {
+  flex: none; width: 92px; padding: 8px 6px; overflow: auto;
+  background: linear-gradient(180deg, #f8fbfe, #edf4fa);
 }
-.qq-row.me .qq-bubble { background: #d5f0fd; box-shadow: 0 0 0 1px #a9cfe6; }
-.qq-btime { font-size: 9px; color: #b0b0b0; padding: 1px 2px 0; }
-.qq-row.me .qq-btime { text-align: right; }
-.qq-sys { align-self: center; font-size: 10px; color: #a07000; background: #fff8e1; padding: 2px 10px; box-shadow: 0 0 0 1px #e8d9a0; }
-.qq-typing { display: flex; align-items: center; gap: 4px; padding: 0 14px 3px; font-size: 10px; color: #707070; }
-.qq-tdot { width: 4px; height: 4px; background: #707070; border-radius: 50%; animation: qqdot 1.1s ease-in-out infinite; }
+.qq-ch-side .qq-av { display: block; width: 46px; height: 46px; margin: 0 auto 6px; box-shadow: 0 0 0 1px #fff, 0 0 0 2px #9dbdd8; }
+.qq-ch-sname { font-size: 11px; font-weight: bold; color: #12518a; text-align: center; word-break: break-all; }
+.qq-ch-srow { font-size: 10px; color: #7b8fa3; margin-top: 4px; line-height: 1.6; word-break: break-all; }
+.qq-ch-srow b { color: #4a7796; font-weight: normal; }
+/* 消息行：真实 QQ 格式 —— 「昵称 时间」一行，消息内容另起一行 */
+.qq-row { margin: 0 0 8px; }
+.qq-bhead { font-size: 11px; line-height: 1.5; }
+.qq-bwho { font-weight: bold; color: #12518a; }
+.qq-btime { margin-left: 6px; font-size: 10px; color: #9aa7b3; }
+.qq-btxt { font-size: 12px; line-height: 1.65; color: #000; word-break: break-word; white-space: pre-wrap; }
+.qq-sep { text-align: center; font-size: 10px; color: #93a3b2; margin: 4px 0 8px; }
+.qq-sys { text-align: center; font-size: 11px; color: #8a6d1f; margin: 2px 0 6px; }
+.qq-typing { display: flex; align-items: center; gap: 4px; padding: 2px 12px 4px; font-size: 11px; color: #7b8fa3; }
+.qq-tdot { width: 4px; height: 4px; background: #7b8fa3; border-radius: 50%; animation: qqdot 1.1s ease-in-out infinite; }
 .qq-tdot:nth-child(2) { animation-delay: .18s; }
 .qq-tdot:nth-child(3) { animation-delay: .36s; }
 @keyframes qqdot { 0%, 60%, 100% { opacity: .25; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-2px); } }
-.qq-send-row { display: flex; gap: 5px; padding: 0 6px; }
-.qq-in {
-  flex: 1; min-width: 0; font: 11.5px "MS Sans Serif", Tahoma, sans-serif;
-  padding: 4px 6px; background: #fff; border: none; min-height: 24px;
-  box-shadow: inset -1px -1px #fff, inset 1px 1px #808080,
-              inset -2px -2px #dfdfdf, inset 2px 2px #0a0a0a;
+/* 工具栏：字体 / 表情 / 播放控制（每一项都真实可用，没放做不到的按钮） */
+.qq-ch-tools {
+  display: flex; align-items: center; gap: 2px; padding: 3px 5px;
+  background: linear-gradient(180deg, #f8fbfe, #e9f1f9); border-top: 1px solid #cfe1f0;
 }
-.qq-in:focus { outline: none; }
-.qq-ctrl { display: flex; flex-wrap: wrap; gap: 4px; padding: 5px 6px 7px; }
+.qq-tool {
+  min-width: 22px; height: 20px; padding: 0 4px; background: none; border: 1px solid transparent;
+  font: 11px Tahoma, "宋体", sans-serif; color: #12518a; cursor: default;
+}
+.qq-tool:hover { background: #d8ebfb; border-color: #8fb9d8; }
+.qq-tool.on { background: #cfe6fa; border-color: #7aa8cc; }
+.qq-tool-sep { width: 1px; height: 14px; margin: 0 3px; background: #cfdde9; }
+.qq-ch-tools .spacer { flex: 1; }
+/* 输入区：真实 QQ2008 是较大的多行输入区 */
+.qq-ch-input { padding: 3px 6px 4px; background: #fff; }
+.qq-in {
+  display: block; width: 100%; height: 54px; resize: none;
+  font: 12px/1.6 Tahoma, "宋体", SimSun, sans-serif; color: #000;
+  padding: 3px 5px; background: #fff; border: 1px solid #a8c4dc; box-shadow: none;
+}
+.qq-in:focus { outline: none; border-color: #2b81c2; }
+/* 底部：发送(S) / 关闭(C)，与真实 QQ2008 一致 */
+.qq-ch-foot {
+  display: flex; align-items: center; justify-content: flex-end; gap: 6px; padding: 4px 6px 6px;
+  background: linear-gradient(180deg, #f2f8fd, #e6eff8); border-top: 1px solid #cfe1f0;
+}
+.qq-ch-foot .btn95 { font: 12px Tahoma, "宋体", sans-serif; min-height: 22px; padding: 2px 12px; }
+/* 大字体模式（工具栏 A 按钮真实切换） */
+.qq-ch-log.big { font-size: 14px; }
+.qq-ch-log.big .qq-btxt { font-size: 14px; }
+/* 表情面板：经典 QQ 默认表情，点一下真的插入 /微笑 这类文本代码 */
+.qq-face {
+  position: absolute; z-index: 60; width: 176px; padding: 4px;
+  background: #fff; border: 1px solid #8fa8bd; box-shadow: 2px 2px 0 rgba(0, 0, 0, .18);
+  display: flex; flex-wrap: wrap; gap: 2px;
+}
+.qq-face-i {
+  width: 32px; height: 22px; font-size: 10px; line-height: 22px; text-align: center;
+  color: #12518a; cursor: default; border: 1px solid transparent; overflow: hidden;
+}
+.qq-face-i:hover { background: #d8ebfb; border-color: #8fb9d8; }
 
-/* 好友头像：10×10 像素谱由 JS 生成 box-shadow 挂在 .qq-avpx 上，
-   容器按 16 / 24 / 32px 用 transform 缩放同一幅画 */
-.qq-avpx { position: absolute; left: 0; top: 0; width: 2px; height: 2px; }
-.qq-f-av .qq-avpx { transform: scale(.8); transform-origin: 0 0; }
-.qq-msg-av .qq-avpx { transform: scale(1.2); transform-origin: 0 0; }
-.qq-av .qq-avpx { transform: scale(1.6); transform-origin: 0 0; }
+/* 菜单里的年代下拉与小按钮 */
+.qq-era {
+  flex: 1; min-width: 0; font: 11px Tahoma, "宋体", sans-serif; color: #10314c;
+  padding: 1px 3px; background: #fff; border: 1px solid #86aecd; min-height: 20px;
+}
+.qq-era:focus { outline: none; }
+.qq-mini { font: 11px Tahoma, "宋体", sans-serif; padding: 1px 8px; min-height: 20px; }
+
+/* 头像像素画：JS 现场生成 SVG data URI（img-src data: 在 CSP 白名单内），
+   <img> 撑满容器，pixelated 保证像素感；容器多大画就多大 */
+.qq-avimg {
+  position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+  display: block; image-rendering: pixelated;
+}
 
 /* ── 托盘：QQ 启动后驻留，有未读时闪动 ── */
 #trayIcons { display: flex; align-items: center; gap: 4px; }
@@ -2940,6 +3090,7 @@ canvas#game {
   /* 窗口：铺满视口宽度，内部内容区滚动，避免「小窗挤压 + 无处可滑」 */
   .win95 { max-width: 100vw !important; }
   .appwin, #pcWin, #ieWin, #dosWin, #readmeWin, #mineWin, #gameWin, #qqWin, #qqChatWin { left: 0 !important; right: 0 !important; }
+  .qq-ch-side { display: none; }
   .fm-frame { height: auto; min-height: 62vh; }
   /* 任务栏避让 iPhone 底部手势条，并给「开始」按钮留触摸高度 */
   .taskbar {
@@ -5085,7 +5236,9 @@ const QQ_JS = `/* ═══════════════ 复古 QQ（仿 
     A: ['hhhhhhhhhh', 'hhhhhhhhhh', 'hhsssssssh', 'hseksseksh', 'hssssssssh', 'hsssmmsssh', 'hssssssssh', 'cccccccccc', 'cccccccccc', 'cccccccccc'],
     B: ['hhhhhhhhhh', 'hhhhhhhhhh', 'hhsssssssh', 'hseksseksh', 'hhssmmssh.', 'hhsssssshh', 'hhhsssshhh', 'hhccccccch', 'hcccccccch', '.cccccccc.'],
     C: ['cccccccccc', 'cccccccccc', 'chhssssshh', 'hseksseksh', 'hssssssssh', 'hsssmmsssh', 'hssssssssh', 'cccccccccc', 'cccccccccc', 'cccccccccc'],
-    D: ['hhhhhhhhhh', 'hhhhhhhhhh', 'hhsssssssh', 'hkkkkkkkkh', 'hkkkkkkkkh', 'hsssmmsssh', 'hssssssssh', 'cccccccccc', 'cccccccccc', 'cccccccccc']
+    D: ['hhhhhhhhhh', 'hhhhhhhhhh', 'hhsssssssh', 'hkkkkkkkkh', 'hkkkkkkkkh', 'hsssmmsssh', 'hssssssssh', 'cccccccccc', 'cccccccccc', 'cccccccccc'],
+    /* 时钟：「最近联系人」Tab 的图标 */
+    E: ['..kkkkkk..', '.kk....kk.', 'kk..hh..kk', 'kk..hh..kk', 'kk..hhhhkk', 'kk....hhkk', 'kk......kk', '.kk....kk.', '..kkkkkk..', '..........']
   };
 
   var PRESETS = {
@@ -5097,7 +5250,7 @@ const QQ_JS = `/* ═══════════════ 复古 QQ（仿 
     },
     friends: [
       {
-        name: '╰☆葬爱家族★冷少╮', sign: '家族不倒，葬爱到老。', group: '家族', era: 2005, on: true,
+        name: '╰☆葬爱家族★冷少╮', sign: '家族不倒，葬爱到老。', group: '家族', era: 2005, on: true, qq: '4182637',
         av: 'D', pal: { h: '#3a2a1a', s: '#f2c89b', k: '#1a1a1a', m: '#a05050', c: '#2a2a34' },
         script: [
           { f: '在吗？家族今晚还聚会吗，别跟我说你又忘了。' },
@@ -5117,7 +5270,7 @@ const QQ_JS = `/* ═══════════════ 复古 QQ（仿 
         fallback: ['呵呵，你说什么呢。', '家族的事，你不懂。', '先去洗个头，再说正事。', '嗯嗯，然后呢？', '这话咱线下聊，群里不方便。']
       },
       {
-        name: '埖落灬晓', sign: '涐媞埖落灬晓，请不要再 call 涐。', group: '我的好友', era: 2008, on: true,
+        name: '埖落灬晓', sign: '涐媞埖落灬晓，请不要再 call 涐。', group: '我的好友', era: 2008, on: true, qq: '5928416',
         av: 'B', pal: { h: '#1a1a1a', s: '#f7d7b5', k: '#1a1a1a', m: '#c06070', c: '#d88ab0' },
         script: [
           { f: '在吗？你看了我昨晚发的那篇日志没有。' },
@@ -5137,7 +5290,7 @@ const QQ_JS = `/* ═══════════════ 复古 QQ（仿 
         fallback: ['嗯……然后呢。', '你是不是也有心事。', '大人的世界，就这样吧。', '我不想懂，真的。']
       },
       {
-        name: '回忆ㄨ童年', sign: '让我们回到那时的童年。', group: '老同学', era: 2003, on: true,
+        name: '回忆ㄨ童年', sign: '让我们回到那时的童年。', group: '同学', era: 2003, on: true, qq: '1036428',
         av: 'A', pal: { h: '#241a12', s: '#f2c89b', k: '#1a1a1a', m: '#a05050', c: '#3a6ea5' },
         script: [
           { f: '在吗？同学录我做好了，刚给你寄了一张。' },
@@ -5157,7 +5310,7 @@ const QQ_JS = `/* ═══════════════ 复古 QQ（仿 
         fallback: ['呵呵，跟小时候一样。', '这事我记得，你再想想。', '周末见，不许爽约。', '同学录你填了吗？']
       },
       {
-        name: '℡尐爺', sign: '尐爺涐兂所谓，呮媞涐恠迗崾郅溔糀。', group: '我的好友', era: 2008, on: false,
+        name: '℡尐爺', sign: '尐爺涐兂所谓，呮媞涐恠迗崾郅溔糀。', group: '我的好友', era: 2008, on: false, qq: '8720415',
         av: 'C', pal: { h: '#d8b23a', s: '#f2c89b', k: '#1a1a1a', m: '#a05050', c: '#7a4a9a' },
         script: [
           { f: '涐看沵最近都不上线，是把涐忘了？' },
@@ -5177,7 +5330,7 @@ const QQ_JS = `/* ═══════════════ 复古 QQ（仿 
         fallback: ['芣袸炷，莪帶沵。', '你说你的，我听着呢。', '这事就这么定了。', '尐爷我无所谓。']
       },
       {
-        name: '网吧网管小李', sign: '机子有问题请举手，我在吧台。', group: '网友', era: 2005, on: true,
+        name: '网吧网管小李', sign: '机子有问题请举手，我在吧台。', group: '网友', era: 2005, on: true, qq: '3360719',
         av: 'A', pal: { h: '#1a1a1a', s: '#e8bd8f', k: '#1a1a1a', m: '#8a5050', c: '#5a5a5a' },
         script: [
           { f: '在吗？三楼七号机耳机又没声音了，我过去看看。' },
@@ -5197,7 +5350,7 @@ const QQ_JS = `/* ═══════════════ 复古 QQ（仿 
         fallback: ['我在吧台，喊我一声。', '机子的事好说。', '现在的孩子，防骗意识得加强。', '知道了，我处理。']
       },
       {
-        name: '毒鸡汤bot', sign: '今天也没有努力呢，真好。', group: '我的好友', era: 2012, on: true,
+        name: '毒鸡汤bot', sign: '今天也没有努力呢，真好。', group: '网友', era: 2012, on: true, qq: '1095732',
         av: 'C', pal: { h: '#d8b23a', s: '#f2c89b', k: '#1a1a1a', m: '#a05050', c: '#3a8a5a' },
         script: [
           { f: '朋友，你又打开手机了。说好的学习呢？' },
@@ -5219,7 +5372,7 @@ const QQ_JS = `/* ═══════════════ 复古 QQ（仿 
         fallback: ['嗯，我听着。', '这碗汤你必须喝。', '别狡辩，我见得多了。', '明天会更好——大概吧。', '你努力的样子，连你自己都骗。']
       },
       {
-        name: '家族群·葬爱基地', sign: '葬爱家族总部，进来就是一家人。', group: '群组', era: 2008, on: true,
+        name: '家族群·葬爱基地', sign: '葬爱家族总部，进来就是一家人。', group: '我的QQ群', isGroup: true, era: 2008, on: true, qq: '1208337',
         members: ['家族管理·龙少', '葬爱家族·冷少', 'QQ炫舞家族·公主', '网吧网管小李', '℡尐爺'],
         av: 'D', pal: { h: '#2a2a34', s: '#f2c89b', k: '#1a1a1a', m: '#a05050', c: '#a03030' },
         script: [
@@ -5240,7 +5393,7 @@ const QQ_JS = `/* ═══════════════ 复古 QQ（仿 
         fallback: ['收到。', '龙少说得对。', '＋1', '哈哈哈哈', '葬爱基地，永不言败。']
       },
       {
-        name: 'QQ炫舞家族·公主', sign: '舞团招新，会连击的来。', group: '家族', era: 2008, on: false,
+        name: 'QQ炫舞家族·公主', sign: '舞团招新，会连击的来。', group: '家族', era: 2008, on: false, qq: '7610495',
         av: 'B', pal: { h: '#6b3f1d', s: '#f7d7b5', k: '#1a1a1a', m: '#c06070', c: '#c03030' },
         script: [
           { f: '在吗？舞团周末有活动，来不来凑个人头。' },
@@ -5260,7 +5413,7 @@ const QQ_JS = `/* ═══════════════ 复古 QQ（仿 
         fallback: ['来嘛，就差你了。', '姐带你，怕什么。', 'perfect 的感觉，试过一次就上瘾。', '周末别忘了。']
       },
       {
-        name: '老同学群·初三(2)班', sign: '常回群看看，同学录还在。', group: '群组', era: 2003, on: false,
+        name: '老同学群·初三(2)班', sign: '常回群看看，同学录还在。', group: '我的QQ群', isGroup: true, era: 2003, on: false, qq: '4029116',
         members: ['班主任·王老师', '回忆ㄨ童年', '前排学霸', '后排睡神'],
         av: 'A', pal: { h: '#241a12', s: '#f2c89b', k: '#1a1a1a', m: '#a05050', c: '#4a7a3a' },
         script: [
@@ -5295,6 +5448,9 @@ const QQ_JS = `/* ═══════════════ 复古 QQ（仿 
     chats: {},          // id -> { pos, msgs: [{w,who,text,t}] }
     unread: {},         // id -> 未读数（真实收到且没看过的）
     presence: {},       // id -> 是否在线（头像/计数/派发候选都用真值）
+    tab: 'friend',     // friend | group | recent —— 与真实 QQ 的三个 Tab 一致
+    find: '',          // 查找联系人关键词（真的过滤列表）
+    fold: {},          // 分组折叠状态（真实 QQ 点分组标题可折叠）
     playing: false,
     stepping: false,
     macroSend: false,   // 宏即将真实点击发送（发送路径据此区分来源）
@@ -5367,19 +5523,34 @@ const QQ_JS = `/* ═══════════════ 复古 QQ（仿 
   function dayKey(t) { var d = new Date(t); return d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate(); }
   function dayLabel(t) { var d = new Date(t); return d.getFullYear() + '年' + (d.getMonth() + 1) + '月' + d.getDate() + '日'; }
 
+  /* 经典 QQ 默认表情的真实名称；插进输入框的是早期 QQ 的文本表情代码 /微笑 */
+  var FACES = ['微笑', '撇嘴', '色', '发呆', '得意', '流泪', '害羞', '闭嘴', '睡', '大哭',
+    '尴尬', '发怒', '调皮', '呲牙', '惊讶', '难过', '酷', '冷汗', '抓狂', '吐',
+    '偷笑', '愉快', '白眼', '傲慢', '饥饿', '困', '惊恐', '流汗', '憨笑', '奋斗',
+    '咒骂', '疑问', '嘘', '晕', '疯了', '衰', '骷髅', '敲打', '再见', '擦汗',
+    '抠鼻', '鼓掌', '糗大了', '坏笑', '左哼哼', '右哼哼', '哈欠', '鄙视', '委屈',
+    '快哭了', '阴险', '亲亲', '吓', '可怜'];
+
   /* ─────────── 四、头像像素画 ─────────── */
-  function shadowOf(pat, pal) {
-    var out = [];
-    for (var y = 0; y < pat.length; y++) {
-      for (var x = 0; x < pat[y].length; x++) {
-        var c = pal[pat[y].charAt(x)];
-        if (c) out.push((x * 2) + 'px ' + (y * 2) + 'px 0 ' + c);
-      }
-    }
-    return out.join(',');
-  }
+  /* 头像像素画的渲染通道：CSP 的 style-src 'self' 会静默丢弃 style 属性里的
+     box-shadow，连 <style> 元素的 sheet 都不给（Chromium 实测，头像整块空白）。
+     而 img-src 'self' data: 本来就在白名单里（为二维码放行），所以把像素谱
+     现场画成 SVG 的 data URI，用 <img> 显示——完全合规、零文件、运行时生成。
+     同一幅谱+调色板只编码一次，之后复用缓存。 */
+  var avCache = {};
   function avHtml(who) {
-    return '<i class="qq-avpx" style="box-shadow:' + shadowOf(AV[who.av] || AV.A, who.pal) + '"></i>';
+    var key = who.av + '|' + who.pal.h + who.pal.s + who.pal.k + who.pal.m + who.pal.c;
+    if (!avCache[key]) {
+      var pat = AV[who.av] || AV.A, pal = who.pal, r = [];
+      for (var y = 0; y < pat.length; y++)
+        for (var x = 0; x < pat[y].length; x++) {
+          var c = pal[pat[y].charAt(x)];
+          if (c) r.push('<rect x="' + (x * 2) + '" y="' + (y * 2) + '" width="2" height="2" fill="' + c + '"/>');
+        }
+      var svg = "<svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 20 20' shape-rendering='crispEdges'>" + r.join('') + '</svg>';
+      avCache[key] = 'data:image/svg+xml;base64,' + btoa(svg);
+    }
+    return '<img class="qq-avimg" src="' + avCache[key] + '" alt="" aria-hidden="true">';
   }
 
   /* ─────────── 五、音效（Web Audio 合成，零文件零依赖） ─────────── */
@@ -5424,31 +5595,66 @@ const QQ_JS = `/* ═══════════════ 复古 QQ（仿 
   }
 
   /* ─────────── 六、面板渲染 ─────────── */
+  /* 真实 QQ 的分组顺序；「陌生人」「黑名单」与真实 QQ 一样常驻（空的也显示） */
+  var GROUPS = ['我的好友', '同学', '网友', '家族', '陌生人', '黑名单'];
+  function matchKw(f, kw) {
+    if (!kw) return true;
+    return (f.name + ' ' + f.sign + ' ' + (f.qq || '')).toLowerCase().indexOf(kw) >= 0;
+  }
+  function friendRow(fr) {
+    var u = state.unread[fr.id] || 0;
+    var on = state.presence[fr.id] !== false;
+    return '<div class="qq-f' + (on ? '' : ' off') + (state.cur === fr.id ? ' sel' : '') + '" data-f="' + fr.id + '" tabindex="0">' +
+      '<span class="qq-f-av">' + avHtml(fr) + '</span>' +
+      '<span class="qq-f-main">' +
+      '<span class="qq-f-name">' + esc(fr.name) + '</span>' +
+      '<span class="qq-f-sign">' + esc(fr.sign) + '</span>' +
+      '</span>' +
+      (u ? '<span class="qq-badge">' + (u > 99 ? '99+' : u) + '</span>' : '') +
+      '</div>';
+  }
+  /* 分组标题：三角 + 名称 + 在线/总数（真实 QQ 的格式，点一下可折叠） */
+  function secHtml(key, title, list, kw) {
+    var fkey = key + '|' + title;
+    var on = 0;
+    for (var i = 0; i < list.length; i++) if (state.presence[list[i].id] !== false) on++;
+    var fold = !!state.fold[fkey];
+    var html = '<div class="qq-gname' + (fold ? ' fold' : '') + '" data-g="' + esc(fkey) + '" tabindex="0">' +
+      '<span class="qq-gtri"></span>' + esc(title) +
+      '<span class="qq-gnum">' + on + '/' + list.length + '</span></div>';
+    if (fold) return html;
+    for (var j = 0; j < list.length; j++) html += friendRow(list[j]);
+    return html;
+  }
+  function emptyHtml(kw) {
+    return '<div class="qq-empty">' + (kw ? '没有找到「' + esc(state.find) + '」' : '还没有联系人') + '</div>';
+  }
   function renderPanel() {
     var box = $('qqGroups');
-    var order = [], byGroup = {};
-    for (var i = 0; i < friends.length; i++) {
-      var f = friends[i];
-      if (!byGroup[f.group]) { byGroup[f.group] = []; order.push(f.group); }
-      byGroup[f.group].push(f);
-    }
-    var html = '';
-    for (var g = 0; g < order.length; g++) {
-      html += '<div class="qq-gname">' + esc(order[g]) + '</div>';
-      var list = byGroup[order[g]];
-      for (var j = 0; j < list.length; j++) {
-        var fr = list[j];
-        var u = state.unread[fr.id] || 0;
-        var on = state.presence[fr.id] !== false;
-        html += '<div class="qq-f' + (on ? '' : ' off') + (state.cur === fr.id ? ' sel' : '') + '" data-f="' + fr.id + '" tabindex="0">' +
-          '<span class="qq-f-av">' + avHtml(fr) + '</span>' +
-          '<span class="qq-f-main">' +
-          '<span class="qq-f-name">' + esc(fr.name) + '<i class="qq-f-era"> · ' + fr.era + '</i></span>' +
-          '<span class="qq-f-sign">' + esc(fr.sign) + '</span>' +
-          '</span>' +
-          (u ? '<span class="qq-badge">' + (u > 99 ? '99+' : u) + '</span>' : '') +
-          '</div>';
+    var kw = (state.find || '').toLowerCase().replace(/^\\s+|\\s+$/g, '');
+    var html = '', i, list;
+    if (state.tab === 'group') {
+      list = friends.filter(function (f) { return f.isGroup && matchKw(f, kw); });
+      html = list.length ? secHtml('g', '我的QQ群', list, kw) : emptyHtml(kw);
+    } else if (state.tab === 'recent') {
+      /* 最近联系人：真的按最后一次交谈时间倒序（真实 QQ 就是这个规则） */
+      var rec = [];
+      for (i = 0; i < friends.length; i++) {
+        var r = chatRec(friends[i].id);
+        if (r.msgs.length) rec.push({ f: friends[i], t: r.msgs[r.msgs.length - 1].t });
       }
+      rec.sort(function (a, b) { return b.t - a.t; });
+      list = rec.map(function (x) { return x.f; }).filter(function (f) { return matchKw(f, kw); });
+      html = list.length ? secHtml('r', '最近联系人', list, kw) : emptyHtml(kw);
+    } else {
+      var hit = 0;
+      for (i = 0; i < GROUPS.length; i++) {
+        list = friends.filter(function (f) { return !f.isGroup && f.group === GROUPS[i] && matchKw(f, kw); });
+        if (!list.length && kw) continue;      /* 查找时只留命中的分组 */
+        hit += list.length;
+        html += secHtml('g' + i, GROUPS[i], list, kw);
+      }
+      if (kw && !hit) html = emptyHtml(kw);
     }
     box.innerHTML = html;
   }
@@ -5462,16 +5668,20 @@ const QQ_JS = `/* ═══════════════ 复古 QQ（仿 
 
   /* ─────────── 七、会话渲染 ─────────── */
   function scrollLog() { var l = $('qqLog'); l.scrollTop = l.scrollHeight; }
+  /* 真实 QQ2008 的消息格式：「昵称 2008-07-15 20:31:12」一行，内容另起一行 */
+  function fmtFull(t) {
+    var d = new Date(t);
+    return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()) + ' ' +
+      p2(d.getHours()) + ':' + p2(d.getMinutes()) + ':' + p2(d.getSeconds());
+  }
   function rowHtml(m) {
     var f = friendById(state.cur);
     var me = m.w === 'me';
-    var av = me ? avHtml(PRESETS.me) : avHtml(f);
-    var who = (!me && f && f.group === '群组') ? '<span class="qq-bwho">' + esc(m.who) + '</span>' : '';
+    var who = me ? PRESETS.me.name : (m.who || (f && f.name) || '对方');
     return '<div class="qq-row' + (me ? ' me' : '') + '">' +
-      '<span class="qq-msg-av">' + av + '</span>' +
-      '<span class="qq-bwrap">' + who +
-      '<span class="qq-bubble">' + esc(m.text) + '</span>' +
-      '<span class="qq-btime">' + esc(fmtTime(m.t)) + '</span></span></div>';
+      '<div class="qq-bhead"><span class="qq-bwho">' + esc(who) + '</span>' +
+      '<span class="qq-btime">' + esc(fmtFull(m.t)) + '</span></div>' +
+      '<div class="qq-btxt">' + esc(m.text) + '</div></div>';
   }
   function appendRow(m) {
     var log = $('qqLog');
@@ -5750,7 +5960,7 @@ const QQ_JS = `/* ═══════════════ 复古 QQ（仿 
       friendTurn(f, f.script[respIdx], function () { rec.pos = respIdx + 1; saveChat(id); });
     } else {
       var line = pick(f.fallback);
-      var fb = f.group === '群组'
+      var fb = f.isGroup
         ? { g: pick(f.members || [f.name]), t: line }
         : { f: line };
       friendTurn(f, fb, function () {});
@@ -5815,6 +6025,51 @@ const QQ_JS = `/* ═══════════════ 复古 QQ（仿 
       });
     }, 0);
   }
+  /* ── 主菜单（底部企鹅按钮）与表情面板 ── */
+  function hideMenu() { $('qqMenu').hidden = true; }
+  function toggleMenu() {
+    var m = $('qqMenu');
+    m.hidden = !m.hidden;
+    if (m.hidden) return;
+    var r = $('qqMenuBtn').getBoundingClientRect();
+    m.style.left = Math.max(4, Math.min(r.left, window.innerWidth - 160)) + 'px';
+    m.style.top = Math.max(4, r.top - 132) + 'px';
+    setTimeout(function () {
+      document.addEventListener('pointerdown', function once() {
+        hideMenu();
+        document.removeEventListener('pointerdown', once);
+      });
+    }, 0);
+  }
+  function hideFace() { var b = $('qqFaceBox'); if (b) b.parentNode.removeChild(b); }
+  function showFace(btn) {
+    hideFace();
+    var box = document.createElement('div');
+    box.className = 'qq-face';
+    box.id = 'qqFaceBox';
+    var html = '';
+    for (var i = 0; i < FACES.length; i++) html += '<span class="qq-face-i" data-f="' + esc(FACES[i]) + '">' + esc(FACES[i]) + '</span>';
+    box.innerHTML = html;
+    box.addEventListener('click', function (ev) {
+      var it = closestEl(ev.target, '.qq-face-i');
+      if (!it) return;
+      var inp = $('qqIn');
+      inp.value += '/' + it.getAttribute('data-f') + ' ';
+      inp.focus();
+      hideFace();
+    });
+    document.body.appendChild(box);
+    var r = btn.getBoundingClientRect();
+    box.style.left = Math.max(4, Math.min(r.left, window.innerWidth - 184)) + 'px';
+    box.style.top = Math.max(4, r.top - 150) + 'px';
+    setTimeout(function () {
+      document.addEventListener('pointerdown', function once() {
+        hideFace();
+        document.removeEventListener('pointerdown', once);
+      });
+    }, 0);
+  }
+
   function quitQQ() {
     stopPlay();
     clearMacroTimers();
@@ -5859,7 +6114,7 @@ const QQ_JS = `/* ═══════════════ 复古 QQ（仿 
   /* 好友在线状态会真的变：头像灰/亮、在线计数、上线敲门声都随之更新 */
   function presenceTick() {
     ambAfter(rand(45000, 90000), function () {
-      var cands = friends.filter(function (f) { return f.group !== '群组'; });
+      var cands = friends.filter(function (f) { return !f.isGroup; });
       if (cands.length && Math.random() < 0.35) {
         var f = pick(cands);
         var on = state.presence[f.id] !== false;
@@ -5876,8 +6131,29 @@ const QQ_JS = `/* ═══════════════ 复古 QQ（仿 
   function renderChatTitle() {
     var f = friendById(state.cur);
     if (!f) return;
-    $('qqChatTitle').textContent = (f.group === '群组' ? f.name + '（群）' : '与 ' + f.name + ' 对话') +
+    $('qqChatTitle').textContent = '与 ' + f.name + (f.qq ? '（' + f.qq + '）' : '') + ' 对话' +
       (state.era ? ' · ' + state.era : '');
+  }
+  /* 聊天窗口顶部：对方头像 + 昵称（QQ号）+ 个性签名 */
+  function renderChatHead() {
+    var f = friendById(state.cur);
+    if (!f) return;
+    $('qqChatAv').innerHTML = avHtml(f);
+    $('qqChatName').textContent = f.name + (f.qq ? '（' + f.qq + '）' : '');
+    $('qqChatSign').textContent = f.sign;
+  }
+  /* 右侧资料栏：真实 QQ2008 聊天窗口右侧就是这么一栏 */
+  function renderChatSide() {
+    var f = friendById(state.cur);
+    if (!f) { $('qqChatSide').innerHTML = ''; return; }
+    $('qqChatSide').innerHTML =
+      '<span class="qq-av">' + avHtml(f) + '</span>' +
+      '<div class="qq-ch-sname">' + esc(f.name) + '</div>' +
+      '<div class="qq-ch-srow"><b>' + (f.isGroup ? '群号' : 'QQ') + '</b> ' + esc(f.qq || '-') + '</div>' +
+      '<div class="qq-ch-srow"><b>分组</b> ' + esc(f.group) + '</div>' +
+      '<div class="qq-ch-srow"><b>年代</b> ' + f.era + '</div>' +
+      '<div class="qq-ch-srow"><b>状态</b> ' + (state.presence[f.id] !== false ? '在线' : '离线') + '</div>' +
+      '<div class="qq-ch-srow">' + esc(f.sign) + '</div>';
   }
   function openChat(id) {
     if (!friendById(id)) return;
@@ -5890,6 +6166,8 @@ const QQ_JS = `/* ═══════════════ 复古 QQ（仿 
     renderTray();
     renderTaskFlash();
     renderChatTitle();
+    renderChatHead();
+    renderChatSide();
     W98.openWin($('qqChatWin'));
     renderLog();
     /* 用户要求：打开好友消息之后自动输入 —— 打开即自动播放 */
@@ -5942,7 +6220,7 @@ const QQ_JS = `/* ═══════════════ 复古 QQ（仿 
   function initMySign() {
     var el = $('qqMySign');
     var saved = store('sign');
-    if (saved) el.textContent = saved;
+    el.textContent = saved || PRESETS.me.sign;
     el.title = '点击修改个性签名';
     el.addEventListener('click', function () {
       if (el._editing) return;
@@ -6002,9 +6280,52 @@ const QQ_JS = `/* ═══════════════ 复古 QQ（仿 
         : '已上线：恢复接收新消息。');
     });
     $('qqGroups').addEventListener('click', function (e) {
+      var g = closestEl(e.target, '.qq-gname');
+      if (g) {                                  /* 点分组标题 = 折叠/展开，与真实 QQ 一致 */
+        var k = g.getAttribute('data-g');
+        state.fold[k] = !state.fold[k];
+        renderPanel();
+        return;
+      }
       var row = closestEl(e.target, '.qq-f');
       if (row) openChat(row.getAttribute('data-f'));
     });
+    /* 三个 Tab：好友 / QQ群 / 最近联系人 */
+    $('qqTabs').addEventListener('click', function (e) {
+      var tab = closestEl(e.target, '.qq-tab');
+      if (!tab) return;
+      state.tab = tab.getAttribute('data-tab');
+      var kids = $('qqTabs').children;
+      for (var i = 0; i < kids.length; i++) kids[i].classList.toggle('on', kids[i] === tab);
+      renderPanel();
+    });
+    /* 查找联系人：真的按昵称/签名/号码过滤 */
+    $('qqFind').addEventListener('input', function () {
+      state.find = $('qqFind').value;
+      renderPanel();
+    });
+    /* 主菜单 */
+    $('qqMenuBtn').addEventListener('click', function (e) {
+      e.stopPropagation();
+      toggleMenu();
+    });
+    $('qqMenu').addEventListener('click', function (e) { e.stopPropagation(); });
+    $('qqQuitRow').addEventListener('click', function () { hideMenu(); quitQQ(); });
+    /* 字体大小：真实切换（工具栏 A 按钮） */
+    $('qqFontBtn').addEventListener('click', function () {
+      var big = $('qqLog').classList.toggle('big');
+      this.classList.toggle('on', big);
+    });
+    /* 表情：经典 QQ 默认表情，点一下真的把 /微笑 这样的文本代码插进输入框 */
+    $('qqFaceBtn').addEventListener('click', function (e) {
+      e.stopPropagation();
+      showFace(this);
+    });
+    $('qqCloseBtn').addEventListener('click', function () { W98.closeWin($('qqChatWin')); });
+    /* Tab 图标：与真实 QQ 一样带小头像 */
+    $('qqTabIcoF').innerHTML = avHtml({ av: 'A', pal: PRESETS.me.pal });
+    $('qqTabIcoG').innerHTML = avHtml({ av: 'D', pal: { h: '#2a2a34', s: '#f2c89b', k: '#1a1a1a', m: '#a05050', c: '#a03030' } });
+    $('qqTabIcoR').innerHTML = avHtml({ av: 'E', pal: { k: '#2b6ea8', h: '#2b6ea8' } });
     $('qqSendBtn').addEventListener('click', sendMsg);
     $('qqIn').addEventListener('keydown', function (e) {
       if (e.key === 'Enter') { e.preventDefault(); sendMsg(); return; }

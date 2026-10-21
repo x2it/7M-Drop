@@ -484,10 +484,14 @@ async function setVal(sel, v) {
   await sleep(700);
   ok('双击 QQ 图标打开面板', await evaluate(`!document.getElementById('qqWin').hidden`));
   ok('托盘出现企鹅图标', await evaluate(`!!document.getElementById('qqTray')`));
-  ok('好友列表渲染 9 位好友', await evaluate(`document.querySelectorAll('.qq-f').length`) === 9,
+  ok('好友 Tab 渲染 7 位好友（群在 QQ群 Tab，与真实 QQ 一致）', await evaluate(`document.querySelectorAll('.qq-f').length`) === 7,
     await evaluate(`document.querySelectorAll('.qq-f').length`));
-  ok('好友分组齐全（家族/我的好友/老同学/网友/群组）', await evaluate(`(function(){var t=document.getElementById('qqGroups').textContent; return /家族/.test(t)&&/群组/.test(t)&&/我的好友/.test(t)&&/老同学/.test(t)&&/网友/.test(t);})()`));
-  ok('每项都有头像像素画', await evaluate(`document.querySelectorAll('.qq-f-av .qq-avpx').length`) === 9);
+  ok('分组与真实 QQ 一致（我的好友/同学/网友/家族/陌生人/黑名单）', await evaluate(`(function(){var t=document.getElementById('qqGroups').textContent; return /我的好友/.test(t)&&/同学/.test(t)&&/网友/.test(t)&&/家族/.test(t)&&/陌生人/.test(t)&&/黑名单/.test(t);})()`));
+  ok('每组标题带在线/总数统计', await evaluate(`document.getElementById('qqGroups').textContent.indexOf('1/2') >= 0`));
+  ok('每项都有像素头像（SVG data URI）', await evaluate(`document.querySelectorAll('.qq-f-av .qq-avimg').length`) === 7);
+  ok('QQ群 Tab 有 2 个群', await evaluate(`(function(){document.querySelector('.qq-tab[data-tab="group"]').click(); return document.querySelectorAll('.qq-f').length;})()`) === 2);
+  ok('切回好友 Tab 恢复 7 人', await evaluate(`(function(){document.querySelector('.qq-tab[data-tab="friend"]').click(); return document.querySelectorAll('.qq-f').length;})()`) === 7);
+  ok('查找联系人真的过滤', await evaluate(`(function(){var f=document.getElementById('qqFind'); f.value='小李'; f.dispatchEvent(new Event('input',{bubbles:true})); var n=document.querySelectorAll('.qq-f').length; f.value=''; f.dispatchEvent(new Event('input',{bubbles:true})); return n;})()`) === 1);
   ok('在线人数为真实统计', await evaluate(`/在线 \\d+ 人/.test(document.getElementById('qqOnline').textContent)`),
     await evaluate(`document.getElementById('qqOnline').textContent`));
   ok('年代选择器含 2003/2005/2008/2012 + 真实日期', await evaluate(`(function(){var o=[].map.call(document.getElementById('qqEra').options,function(x){return x.value}); return o.join(',').indexOf(',2003,')>=0 && o[0]==='';})()`));
