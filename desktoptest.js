@@ -274,8 +274,8 @@ async function setVal(sel, v) {
     /'view-ie':/.test(home.body) && /'fav-ie':/.test(home.body) && /about-ie/.test(home.body));
   ok('根桌面内容区滚动条隐藏化', /notepad::-webkit-scrollbar/.test(cssHome.body) && /dos-body::-webkit-scrollbar/.test(cssHome.body));
 
-  const shareHome = await httpCode('/s/guest1234/');
-  const shareCss = await httpCode('/s/guest1234/app.css');
+  const shareHome = await httpCode('/s/' + SHARE + '/');
+  const shareCss = await httpCode('/s/' + SHARE + '/app.css');
   ok('分享页滚动条全隐藏 + 列表无内层滚动',
     /::-webkit-scrollbar\{width:0;height:0;display:none\}/.test(shareCss.body) &&
     /\.list\{list-style:none;margin:8px 0 0;padding:2px;background:var\(--win\);box-shadow:var\(--sink\)\}/.test(shareCss.body) &&
