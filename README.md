@@ -1,8 +1,4 @@
-# 7喵快传 · 7M-Drop
-
-![License](https://img.shields.io/badge/License-MIT-blue.svg)
-
-<img src="https://raw.githubusercontent.com/x2it/7M-Drop/main/banner.png" alt="7喵快传" width="100%">
+# 7喵快传
 
 > **一个文件，一个桌面。**
 
@@ -177,6 +173,13 @@ curl --data-binary @报告.pdf "$BASE/api/put?name=report.pdf"  # POST
   三种难度、计时与本地最高分
 - **屏保**：显示属性里可选四款（星空 / 飞行窗口 / 3D 迷宫 / 3D 管道），
   支持预览与等待时间设置；触屏或动键即唤醒
+- **复古 QQ（仿 2008）**：双击桌面 QQ 图标打开好友面板，右下角托盘出现
+  企鹅图标；打开会话即自动播放剧本（真的逐字打字、真的点发送），
+  未读时托盘与任务栏按钮真实闪动 + Web Audio 合成的「滴滴」消息音。
+  用户一按键立即接管，接得上剧本就按剧本演，接不上给符合人设的兜底回复。
+  9 位好友各带一套完整对话（杀马特 / 非主流 / 老同学 / 群聊），
+  年代选择器可穿越回 2003 / 2005 / 2008 / 2012——任务栏时钟、系统属性、
+  MS-DOS 的 date、消息时间戳全部同步到「当年的今天」，刷新后仍生效
 - **PWA 安装**：任务栏「安装」按钮或桌面「安装到桌面」图标
   （manifest + Service Worker + 根作用域，需 HTTPS / localhost）
 - **彩蛋**：试试在 MS-DOS 窗口里敲 `ver`、`dir`、`help`；
@@ -256,7 +259,7 @@ Win98 桌面登录框里 `Administrator` 的默认口令（见环境变量表）
 |---|---|
 | 接口 | 28 项自测，本机与公网隧道各跑一遍 |
 | 权限 | 21 项，确认分享口令删除返回 403 且文件未被误删 |
-| 桌面 | **127 项**验收（无头 Chromium 直连 CDP）：窗口/扫雷三档难度/屏保/登录/贪吃蛇最大化全流程 |
+| 桌面 | **173 项**验收（无头 Chromium 直连 CDP）：窗口/扫雷三档难度/屏保/登录/贪吃蛇最大化全流程；含复古 QQ 46 项（自动播放真的逐字打字并点发送、用户按键立即接管、剧本匹配推进、兜底回复、未读闪动、年代穿越同源与持久化、隐身、退出重启） |
 | PWA | 33 项：manifest、Service Worker 策略、图标、CSP、首页隔离 |
 | 配额与限流 | 4 项，单起一个 1MB 上限的实例实测：文字分享越界 507、分片 init 越界 507、写接口触发 429 |
 | 边界与安全 | 16 项，真实 HTTP 打实例：畸形 JSON 与超限区分 400/413、文件名路径穿越、Content-Disposition 防注入、Range 后缀、权限隔离与 meta 不泄露 |
@@ -295,7 +298,7 @@ SWEEP_IDLE_MS=3000 SWEEP_INTERVAL_MS=1500 SWEEP_ORPHAN_MS=10000 node sweeptest.j
 
 ## 踩过的坑
 
-写在[安装文档](INSTALL.md)和代码注释里，几条主要的：
+写在[安装文档](ai-install/drop.md)和代码注释里，几条主要的：
 
 - **`HOST` 设成 `0.0.0.0` 会让部分隧道 502**。它只吃 IPv4，而 Windows 上
   `localhost` 优先解析成 `::1`，SSH 类隧道连不上本机。绑 `::` 双栈即可。
@@ -312,4 +315,6 @@ SWEEP_IDLE_MS=3000 SWEEP_INTERVAL_MS=1500 SWEEP_ORPHAN_MS=10000 node sweeptest.j
 
 ## 许可证
 
-[MIT](LICENSE) © 2026 知行工作室 · [https://w3b.pub/](https://w3b.pub/) · support@w3b.pub
+[MIT](LICENSE) © 2026 [知行工作室](https://w3b.pub)
+
+源码仓库：<https://github.com/x2it/7M-Drop> · 问题与建议：<support@w3b.pub>

@@ -151,6 +151,17 @@ async function goto(url) {
   await ws.send('Page.navigate', { url }, sid);
   await sleep(1400);
 }
+/* 轮询等待页面条件成立（真实等事件发生，不拍脑袋睡） */
+async function waitFor(expr, timeout, label) {
+  const t0 = Date.now();
+  for (;;) {
+    let v = null;
+    try { v = await evaluate(expr); } catch (e) { v = null; }
+    if (v) return v;
+    if (Date.now() - t0 > (timeout || 8000)) { console.log('  (等待超时: ' + (label || expr.slice(0, 60)) + ')'); return null; }
+    await sleep(200);
+  }
+}
 async function clickSel(sel) {
   return evaluate(`(function(){var e=document.querySelector(${JSON.stringify(sel)}); if(!e) return 'NOEL'; e.click(); return 'OK';})()`);
 }
@@ -215,7 +226,7 @@ async function setVal(sel, v) {
   ok('屏保画布接 DPR', /devicePixelRatio/.test(home.body));
 
   ok('根首页含 manifest link', /rel="manifest"/.test(page.body));
-  ok('根首页含 10 个桌面图标', (page.body.match(/class="dicon"/g) || []).length === 10,
+  ok('根首页含 11 个桌面图标', (page.body.match(/class="dicon"/g) || []).length === 11,
     (page.body.match(/class="dicon"/g) || []).length);
   ok('根首页含二级菜单', (page.body.match(/class="smsub"/g) || []).length === 5);
   ok('开始菜单含收藏夹（Win98 特征）', /data-sub="fav"/.test(page.body) && /ico-fav/.test(page.body));
@@ -242,7 +253,7 @@ async function setVal(sel, v) {
     ieHomeRes.body.indexOf('知行工作室') >= 0 &&
     ieHomeRes.body.indexOf('w3b.pub') >= 0 &&
     ieHomeRes.body.indexOf('home.7miao.com') < 0);
-  ok('页面标题带项目名与定位语', /<title>7喵快传 · 单文件自托管文件服务<\/title>/.test(page.body));
+  ok('页面标题带项目名与定位语', /<title>7喵快传 · 一个文件，一个桌面<\/title>/.test(page.body));
   ok('收藏夹无禁用假项', (page.body.match(/class="smi dis"/g) || []).length === 0);
   ok('笑脸有三态像素画（默认/胜利/阵亡）',
     /mine-smiley::after/.test(cssHome.body) &&
@@ -317,15 +328,20 @@ async function setVal(sel, v) {
   sid = att.sessionId;
   await ws.send('Page.enable', {}, sid);
   await ws.send('Runtime.enable', {}, sid);
+  /* 注入未捕获错误收集器：section 13 的「运行期无明显脚本错误」靠它才有意义 */
+  await ws.send('Page.addScriptToEvaluateOnNewDocument', { source:
+    'window.__cdpErrs=[];window.addEventListener("error",function(e){window.__cdpErrs.push(String(e.message||e.error))});' +
+    'window.addEventListener("unhandledrejection",function(e){window.__cdpErrs.push("unhandledrejection:"+String(e.reason))});'
+  }, sid);
 
   /* ── 1. 桌面渲染 ── */
   await goto(BASE + '/');
-  ok('桌面渲染出 10 个图标', await evaluate(`document.querySelectorAll('.dicon').length`) === 10,
+  ok('桌面渲染出 11 个图标', await evaluate(`document.querySelectorAll('.dicon').length`) === 11,
     await evaluate(`document.querySelectorAll('.dicon').length`));
   ok('任务栏存在', await evaluate(`!!document.getElementById('startBtn')`));
   ok('页面脚本已初始化（任务栏时钟已走）', /^\d\d:\d\d$/.test(String(await evaluate(`document.getElementById('clock').textContent`))),
     await evaluate(`document.getElementById('clock').textContent`));
-  ok('页面 title 为项目名 + 定位语', (await evaluate(`document.title`)) === '7喵快传 · 单文件自托管文件服务',
+  ok('页面 title 为项目名 + 定位语', (await evaluate(`document.title`)) === '7喵快传 · 一个文件，一个桌面',
     await evaluate(`document.title`));
 
   /* ── 2. 开始菜单 + 二级菜单 ── */
@@ -457,7 +473,136 @@ async function setVal(sel, v) {
   ok('屏保可被唤醒关闭', await evaluate(`document.getElementById('ssaver').hidden`) === true);
   ok('屏保选择已持久化', await evaluate(`localStorage.getItem('saver95')`) !== null);
 
-  /* ── 5. 关机三选一 → 登录 ── */
+  /* ── 5. 复古 QQ（仿 2008）：真实仿真验收 ── */
+  /* 从干净状态开始：清掉可能残留的 QQ 本地数据，重载页面 */
+  await evaluate(`localStorage.clear()`);
+  await goto(BASE + '/');
+  ok('桌面有 QQ 图标', await evaluate(`!!document.querySelector('.dicon[data-app="qq"]')`));
+  ok('开始菜单「程序」含 QQ 项', await evaluate(`/QQ/.test(document.getElementById('smsub-prog').textContent)`));
+  /* 桌面图标双击打开（与真 98 一致：单击选中、双击启动） */
+  await evaluate(`document.querySelector('.dicon[data-app="qq"]').click();document.querySelector('.dicon[data-app="qq"]').click()`);
+  await sleep(700);
+  ok('双击 QQ 图标打开面板', await evaluate(`!document.getElementById('qqWin').hidden`));
+  ok('托盘出现企鹅图标', await evaluate(`!!document.getElementById('qqTray')`));
+  ok('好友列表渲染 9 位好友', await evaluate(`document.querySelectorAll('.qq-f').length`) === 9,
+    await evaluate(`document.querySelectorAll('.qq-f').length`));
+  ok('好友分组齐全（家族/我的好友/老同学/网友/群组）', await evaluate(`(function(){var t=document.getElementById('qqGroups').textContent; return /家族/.test(t)&&/群组/.test(t)&&/我的好友/.test(t)&&/老同学/.test(t)&&/网友/.test(t);})()`));
+  ok('每项都有头像像素画', await evaluate(`document.querySelectorAll('.qq-f-av .qq-avpx').length`) === 9);
+  ok('在线人数为真实统计', await evaluate(`/在线 \\d+ 人/.test(document.getElementById('qqOnline').textContent)`),
+    await evaluate(`document.getElementById('qqOnline').textContent`));
+  ok('年代选择器含 2003/2005/2008/2012 + 真实日期', await evaluate(`(function(){var o=[].map.call(document.getElementById('qqEra').options,function(x){return x.value}); return o.join(',').indexOf(',2003,')>=0 && o[0]==='';})()`));
+
+  /* 打开会话：自动播放真实逐字输入 + 真实点击发送 */
+  await evaluate(`document.querySelector('.qq-f[data-f="f0"]').click()`);
+  await sleep(300);
+  ok('会话窗口打开', await evaluate(`!document.getElementById('qqChatWin').hidden`));
+  ok('标题含好友名', await evaluate(`/冷少/.test(document.getElementById('qqChatTitle').textContent)`));
+  ok('自动播放已产生首条好友消息', !!await waitFor(`/家族今晚还聚会吗/.test(document.getElementById('qqLog').textContent)`, 8000, '首条好友消息'));
+  ok('首条是好友台词（左侧气泡）', await evaluate(`(function(){var r=document.querySelector('#qqLog .qq-row'); return !!r && !r.classList.contains('me') && /家族/.test(r.textContent);})()`));
+  ok('存在日期分隔线', await evaluate(`document.querySelectorAll('#qqLog .qq-sep').length`) >= 1);
+  const samples = [];
+  for (let i = 0; i < 8; i++) { samples.push(await evaluate(`document.getElementById('qqIn').value.length`)); await sleep(250); }
+  let grew = false;
+  for (let i = 1; i < samples.length; i++) if (samples[i] > samples[i - 1]) grew = true;
+  ok('输入框在真实逐字增长（宏真的在打字）', grew, JSON.stringify(samples));
+
+  /* 用户接管：真的按键 → 立即暂停并明说 */
+  await evaluate(`(function(){var i=document.getElementById('qqIn'); i.focus(); i.dispatchEvent(new KeyboardEvent('keydown',{key:'a',bubbles:true}));})()`);
+  await sleep(400);
+  ok('用户一按键自动播放即暂停', await evaluate(`document.getElementById('qqPlayBtn').disabled===false && document.getElementById('qqPauseBtn').disabled===true`));
+  ok('暂停有诚实提示', await evaluate(`/已暂停自动播放/.test(document.getElementById('qqLog').textContent)`));
+
+  /* 真实发送 → 兜底回复；输入框清空 */
+  await evaluate(`(function(){var i=document.getElementById('qqIn'); i.value='周末一起去烫个头？'; i.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+  await evaluate(`document.getElementById('qqSendBtn').click()`);
+  ok('对方给了兜底回复', !!await waitFor(`(function(){var rows=document.querySelectorAll('#qqLog .qq-row'); var last=rows[rows.length-1]; return !!last && !last.classList.contains('me');})()`, 6000, '兜底回复'));
+  ok('我的消息真实入流（右侧气泡）', await evaluate(`document.querySelectorAll('#qqLog .qq-row.me').length`) >= 1);
+  ok('输入框发送后清空', await evaluate(`document.getElementById('qqIn').value`) === '');
+
+  /* 重播：二次确认后真的重播 */
+  await evaluate(`document.getElementById('qqReplayBtn').click()`);
+  await sleep(150);
+  ok('重播需二次确认（按钮变形）', await evaluate(`document.getElementById('qqReplayBtn').textContent`) === '再点一次确认');
+  await evaluate(`document.getElementById('qqReplayBtn').click()`);
+  ok('二次确认后真的重播', !!await waitFor(`/家族今晚还聚会吗/.test(document.getElementById('qqLog').textContent)`, 8000, '重播首条'));
+
+  /* 接得上剧本 → 剧情按剧本继续（不是兜底） */
+  await evaluate(`document.getElementById('qqPauseBtn').click()`);
+  await sleep(300);
+  await evaluate(`(function(){var i=document.getElementById('qqIn'); i.value='没忘。老地方，网吧二楼包间，八点是吧'; i.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+  await evaluate(`document.getElementById('qqSendBtn').click()`);
+  ok('用户说出剧本原句 → 对方按剧本回应', !!await waitFor(`/新族规/.test(document.getElementById('qqLog').textContent)`, 8000, '剧本后续'));
+  ok('回应的是下一句剧本', await evaluate(`/统一换火星文头像/.test(document.getElementById('qqLog').textContent)`));
+
+  /* 单步：只演一条 */
+  await evaluate(`document.getElementById('qqStepBtn').click()`);
+  ok('单步播了我方下一条台词', !!await waitFor(`(function(){var rows=document.querySelectorAll('#qqLog .qq-row.me'); for(var i=0;i<rows.length;i++) if(/头像上周刚换/.test(rows[i].textContent)) return true; return false;})()`, 8000, '单步'));
+  ok('单步不会接着播对方的台词', await evaluate(`!/离子烫/.test(document.getElementById('qqLog').textContent)`));
+
+  /* 未读 + 托盘闪动 + 任务栏闪动（切走会话后消息才到达 → 真实未读） */
+  await evaluate(`(function(){var i=document.getElementById('qqIn'); i.value='在吗'; i.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+  await evaluate(`document.getElementById('qqSendBtn').click()`);
+  await evaluate(`document.querySelector('.qq-f[data-f="f1"]').click()`);
+  ok('切走后收到的消息计入未读徽标', !!await waitFor(`(function(){var b=document.querySelector('.qq-f[data-f="f0"] .qq-badge'); return !!b && b.textContent==='1';})()`, 8000, '未读徽标'));
+  ok('托盘图标进入未读闪动态', await evaluate(`document.getElementById('qqTray').classList.contains('unread')`));
+  ok('托盘提示含未读条数', await evaluate(`/1 条未读/.test(document.getElementById('qqTray').title)`));
+  await evaluate(`document.querySelector('#qqChatWin .wclose').click()`);
+  await sleep(300);
+  await evaluate(`document.getElementById('qqWin')._taskBtn.click()`);
+  await sleep(300);
+  ok('最小化时有未读 → 任务栏按钮闪动', await evaluate(`document.getElementById('qqWin')._taskBtn.classList.contains('flash')`));
+  await evaluate(`document.getElementById('qqTray').click()`);
+  await sleep(400);
+  ok('托盘图标可唤回面板', await evaluate(`!document.getElementById('qqWin').hidden`));
+  ok('唤回后任务栏按钮停止闪动', await evaluate(`!document.getElementById('qqWin')._taskBtn.classList.contains('flash')`));
+  await evaluate(`document.querySelector('.qq-f[data-f="f0"]').click()`);
+  await sleep(600);
+  await evaluate(`document.getElementById('qqPauseBtn').click()`);
+  await sleep(200);
+  ok('读过之后未读清零', await evaluate(`!document.querySelector('.qq-f[data-f="f0"] .qq-badge')`));
+  ok('读过之后托盘停止闪动', await evaluate(`!document.getElementById('qqTray').classList.contains('unread')`));
+
+  /* 年代穿越：同源到任务栏时钟/系统属性/MS-DOS，且可持久化、可退回 */
+  await evaluate(`(function(){var s=document.getElementById('qqEra'); s.value='2008'; s.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+  await sleep(400);
+  ok('era 状态切到 2008', await evaluate(`window.QQ.era`) === '2008');
+  ok('eraDate() 返回 2008 年的今天此刻', await evaluate(`window.QQ.eraDate().getFullYear()`) === 2008);
+  ok('会话标题标注穿越年份', await evaluate(`/· 2008/.test(document.getElementById('qqChatTitle').textContent)`));
+  ok('穿越设置持久化', await evaluate(`localStorage.getItem('qq95-era')`) === '2008');
+  await evaluate(`(function(){var i=document.getElementById('qqIn'); i.value='穿越测试'; i.dispatchEvent(new Event('input',{bubbles:true}));})()`);
+  await evaluate(`document.getElementById('qqSendBtn').click()`);
+  ok('新消息的日期分隔线显示 2008 年', !!await waitFor(`(function(){var s=document.querySelectorAll('#qqLog .qq-sep'); return s.length && /2008年/.test(s[s.length-1].textContent);})()`, 6000, '2008 分隔线'));
+  await goto(BASE + '/');
+  ok('刷新后穿越年代仍生效', await evaluate(`window.QQ && window.QQ.era === '2008'`));
+  await evaluate(`document.querySelector('.dicon[data-app="qq"]').click();document.querySelector('.dicon[data-app="qq"]').click()`);
+  await sleep(500);
+  await evaluate(`(function(){var s=document.getElementById('qqEra'); s.value=''; s.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+  await sleep(300);
+  ok('可退回真实日期', await evaluate(`window.QQ.era`) === '' && await evaluate(`window.QQ.eraDate().getFullYear() === new Date().getFullYear()`));
+
+  /* 隐身：暂停接收新消息，面板如实显示 */
+  await evaluate(`(function(){var s=document.getElementById('qqState'); s.value='hidden'; s.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+  await sleep(300);
+  ok('隐身状态在面板如实显示', await evaluate(`/已隐身/.test(document.getElementById('qqOnline').textContent)`));
+  await evaluate(`(function(){var s=document.getElementById('qqState'); s.value='online'; s.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+  await sleep(300);
+  ok('恢复在线', await evaluate(`/在线 \\d+ 人/.test(document.getElementById('qqOnline').textContent)`));
+
+  /* 托盘菜单退出 QQ，且可重新启动 */
+  await evaluate(`document.getElementById('qqTray').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,clientX:200,clientY:600}))`);
+  await sleep(300);
+  ok('托盘右键菜单出现且含「退出 QQ」', await evaluate(`(function(){var m=document.getElementById('qqTrayMenu'); return !!m && /退出 QQ/.test(m.textContent);})()`));
+  await evaluate(`document.querySelector('#qqTrayMenu .ctxi[data-a="quit"]').click()`);
+  await sleep(500);
+  ok('退出后托盘图标消失、窗口全部关闭', await evaluate(`!document.getElementById('qqTray') && document.getElementById('qqWin').hidden && document.getElementById('qqChatWin').hidden`));
+  await evaluate(`document.querySelector('.dicon[data-app="qq"]').click();document.querySelector('.dicon[data-app="qq"]').click()`);
+  await sleep(500);
+  ok('退出后可重新启动（托盘回归）', await evaluate(`!!document.getElementById('qqTray')`));
+  /* 恢复干净现场，避免影响后续关机/登录用例 */
+  await evaluate(`document.querySelector('#qqWin .wclose').click()`);
+  await sleep(200);
+
+  /* ── 6. 关机三选一 → 登录 ── */
   await clickSel('#startBtn');
   await sleep(150);
   await evaluate(`document.querySelector('#startMenu .smi[data-app="shutdown"]').click()`);
@@ -476,7 +621,7 @@ async function setVal(sel, v) {
     return v.indexOf('Guest')>=0 && v.indexOf('Administrator')>=0;
   })()`));
 
-  /* ── 6. 登录：Guest ── */
+  /* ── 7. 登录：Guest ── */
   await setVal('#loginUser', 'Guest');
   await clickSel('#loginOk');
   await sleep(700);
@@ -500,7 +645,7 @@ async function setVal(sel, v) {
   await evaluate(`document.querySelector('#pcWin [data-close]').click()`);
   await sleep(200);
 
-  /* ── 7. 登录：错误密码 ── */
+  /* ── 8. 登录：错误密码 ── */
   await clickSel('#startBtn');
   await sleep(150);
   await evaluate(`document.querySelector('#startMenu .smi[data-app="shutdown"]').click()`);
@@ -521,7 +666,7 @@ async function setVal(sel, v) {
     await evaluate(`/不正确|频繁/.test(document.getElementById('loginHint').textContent)`),
     await evaluate(`document.getElementById('loginHint').textContent`));
 
-  /* ── 8. 登录：正确密码 ── */
+  /* ── 9. 登录：正确密码 ── */
   await setVal('#loginPass', ADMIN_PASS);
   await clickSel('#loginOk');
   await sleep(900);
@@ -531,7 +676,7 @@ async function setVal(sel, v) {
   ok('管理员状态栏标注管理权限', await evaluate(`/管理权限/.test(document.getElementById('fmStatus').textContent)`));
   ok('管理员标签变化', await evaluate(`/管理/.test(document.getElementById('pcLabel').textContent)`));
 
-  /* ── 9. 管理页在 iframe 内可用（跨文档访问，同源）── */
+  /* ── 10. 管理页在 iframe 内可用（跨文档访问，同源）── */
   await sleep(1500);
   const innerRole = await evaluate(`(function(){
     var f = document.getElementById('fmFrame');
@@ -545,14 +690,14 @@ async function setVal(sel, v) {
   ok('内嵌页已载入并可读取（同源 iframe 成功）',
     typeof innerRole === 'string' && /管理|分享/.test(innerRole), innerRole);
 
-  /* ── 10. embed 模式确实生效 ── */
+  /* ── 11. embed 模式确实生效 ── */
   const embedCls = await evaluate(`(function(){
     var f = document.getElementById('fmFrame');
     try { return f.contentDocument.body.className; } catch(e){ return 'ERR'; }
   })()`);
   ok('内嵌页带 body.embed', /embed/.test(String(embedCls)), embedCls);
 
-  /* ── 11. 我的电脑入口 + 安装入口 ── */
+  /* ── 12. 我的电脑入口 + 安装入口 ── */
   ok('桌面有「安装到桌面」图标', await evaluate(`!!document.querySelector('.dicon[data-app="install"]')`));
   ok('开始菜单设置里有安装项', await evaluate(`!!document.querySelector('#smsub-set .smi[data-app="install"]')`));
   ok('我的电脑图标打开文件窗口', await evaluate(`(function(){
@@ -561,7 +706,7 @@ async function setVal(sel, v) {
     return !document.getElementById('pcWin').hidden;
   })()`));
 
-  /* ── 12. DOS 彩蛋 ── */
+  /* ── 13. DOS 彩蛋 ── */
   await evaluate(`(function(){var i=document.querySelector('.dicon[data-app="dos"]'); i.click(); i.click();})()`);
   await sleep(300);
   const dosOut = await evaluate(`(function(){
@@ -633,7 +778,7 @@ async function setVal(sel, v) {
   await ws.send('Emulation.clearDeviceMetricsOverride', {}, sid);
   await sleep(400);
 
-  /* ── 13. 页面控制台无致命错误 ── */
+  /* ── 14. 页面控制台无致命错误 ── */
   const errs = await evaluate(`(function(){
     return window.__cdpErrs ? window.__cdpErrs.length : 0;
   })()`);

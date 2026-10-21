@@ -44,6 +44,22 @@ if (injected.split(tick).length !== 3) {
   fail('注入后的 QR_JS 段反引号数量异常（应为 2 个，即一对定界符）');
 }
 
+// ── 3b. QQ_JS：由 _qqsrc.js 重新内联进 server.js（HOME_JS 之后） ────────
+// 与前端段同源的理由：源码里正常写 \n，内联时统一转义，
+// 避免手抄三万多字节时漏一处转义，让 /home.js 静默失效。
+const QQ_SRC = path.join(DIR, '_qqsrc.js');
+const qqSrc = fs.readFileSync(QQ_SRC, 'utf8');
+const tickQ = String.fromCharCode(96);
+if (qqSrc.indexOf(tickQ) >= 0) fail('_qqsrc.js 含有反引号，请改用字符串拼接');
+if (qqSrc.indexOf('$' + '{') >= 0) fail('_qqsrc.js 含有 ${ 组合，无法安全内联');
+const qqEsc = qqSrc.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$\{/g, '\\${');
+const qqBlock =
+  '/* ' + '═'.repeat(30) + ' 复古 QQ（仿 2008）' + '═'.repeat(30) + '\n' +
+  '   本段由 _build.js 从 _qqsrc.js 自动内联，请勿手改；\n' +
+  '   要改预设对话 / 逻辑，改 _qqsrc.js 后重跑 node _build.js。\n' +
+  '   下发路径：/home.js = HOME_JS + QQ_JS。 */\n' +
+  'const QQ_JS = `' + qqEsc.trim() + '`;';
+
 // ── 4. 拼接进 server.js ──────────────────────────────────────
 const src = fs.readFileSync(TARGET, 'utf8');
 const i = src.indexOf(START);
@@ -54,6 +70,22 @@ if (j < i) fail('标记顺序异常');
 
 const out = src.slice(0, i) + ui.replace(/\s+$/, '') + '\n\n' + src.slice(j);
 fs.writeFileSync(TARGET, out, 'utf8');
+
+// ── 4b. 把重新生成的 QQ_JS 段写回 server.js ───────────────────────────
+// HOME_PAGE / HOME_CSS / HOME_JS / QQ_JS 都在前端边界之外，本脚本不动它们的主体，
+// 只整段替换 QQ_JS（它的两个边界标记写死在下面的注释里）。
+(function inlineQQ() {
+  let cur = fs.readFileSync(TARGET, 'utf8');
+  const QQ_HEAD = '/* ' + '═'.repeat(30) + ' 复古 QQ（仿 2008）' + '═'.repeat(30);
+  const QQ_TAIL = '\nconst HOME_PAGE_404';
+  const a = cur.indexOf(QQ_HEAD);
+  const b = cur.indexOf(QQ_TAIL);
+  if (a < 0 || b < 0 || b < a) fail('server.js 里找不到 QQ_JS 段边界（应为「复古 QQ」注释起到 HOME_PAGE_404 之前）');
+  cur = cur.slice(0, a) + qqBlock + cur.slice(b);
+  fs.writeFileSync(TARGET, cur, 'utf8');
+  console.log('  内联 _qqsrc.js : ' + qqSrc.length + ' 字节 → QQ_JS');
+})();
+
 
 // ── 5. 构建后自检：把真正会被下发到浏览器的字符串单独解析一遍 ──────────
 // server.js 语法正确 ≠ 这些字符串的内容是合法 JS。
@@ -118,6 +150,44 @@ console.log('  浏览器端脚本自检: APP_JS / QR_JS / SW_JS 语法均通过'
     fail('HOME_JS 求值后不是合法 JS —— /home.js 会静默失效。\n        多半是模板里的 \\n 漏写成了 \\n。\n        ' + head2);
   }
   console.log('  根桌面脚本自检: HOME_JS 语法通过 (' + delivered.length + ' 字节下发)');
+})();
+
+// ── 5c. QQ_JS 自检：/home.js = HOME_JS + QQ_JS，后者同样必须逐字节合法 ──
+(function checkQQJs() {
+  const s = fs.readFileSync(TARGET, 'utf8');
+  const head = 'const QQ_JS = `';
+  const tail = '\nconst HOME_PAGE_404';
+  const i = s.indexOf(head);
+  const j = s.indexOf(tail);
+  if (i < 0 || j < 0 || j < i) { console.log('  [warn] 找不到 QQ_JS 段，跳过检查'); return; }
+  const body = s.slice(i + head.length, s.lastIndexOf('`', j));
+  let delivered;
+  try {
+    delivered = vm.runInContext('`' + body + '`', vm.createContext({}), { filename: 'qq-template.js' });
+  } catch (e) {
+    fail('QQ_JS 模板无法求值: ' + e.message);
+  }
+  try {
+    new vm.Script(delivered, { filename: 'qq.js' });
+  } catch (e) {
+    fail('QQ_JS 求值后不是合法 JS —— QQ 功能会整块静默失效。\n        ' + String(e.stack).split('\n').slice(0, 4).join('\n        '));
+  }
+  // 合并下发后整体再解析一遍：两个脚本拼接处不能有语法冲突
+  const home = (function () {
+    const hh = 'const HOME_JS = `';
+    const tt = '\nconst HOME_PAGE_404';
+    const x = s.indexOf(hh);
+    const y = s.indexOf(tt);
+    if (x < 0 || y < x) return '';
+    const bd = s.slice(x + hh.length, s.lastIndexOf('`', y));
+    return vm.runInContext('`' + bd + '`', vm.createContext({}), { filename: 'home-template.js' });
+  })();
+  try {
+    new vm.Script(home + '\n' + delivered, { filename: 'home+qq.js' });
+  } catch (e) {
+    fail('HOME_JS + QQ_JS 合并后不是合法 JS。\n        ' + String(e.stack).split('\n').slice(0, 4).join('\n        '));
+  }
+  console.log('  复古 QQ 脚本自检: QQ_JS 语法通过 (' + delivered.length + ' 字节下发)');
 })();
 
 console.log('构建完成');

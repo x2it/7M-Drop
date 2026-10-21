@@ -12,7 +12,7 @@ const fs = require('fs');
 const path = require('path');
 
 const BASE = process.argv[3] || 'http://127.0.0.1:3000';
-const OUT = process.argv[2] || '/workspace/meowdrop-验收截图';
+const OUT = process.argv[2] || '/workspace/7M-Drop-验收截图';
 const TOKEN = process.env.TOKEN || 'wby6sg8pm0';
 const PASS = process.env.ADMIN_PASS || '@8688991230';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
