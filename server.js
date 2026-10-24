@@ -3083,9 +3083,11 @@ canvas#game {
     padding: 2px 0 6px;
   }
   .dicon { width: 72px; }
-  /* 窗口：铺满视口宽度，内部内容区滚动，避免「小窗挤压 + 无处可滑」 */
+  /* 窗口：初始铺满视口宽度（left:0 + right:0），但不用 !important 钉死——
+     钉死了拖拽 JS 写的 inline left/top 永远不生效，手机上窗口就永远挪不动。
+     拖动后 inline left 覆盖样式表 left，宽度仍由 width:96vw 兜底，不会散架。 */
   .win95 { max-width: 100vw !important; }
-  .appwin, #pcWin, #ieWin, #dosWin, #readmeWin, #mineWin, #gameWin, #qqWin, #qqChatWin { left: 0 !important; right: 0 !important; }
+  .appwin, #pcWin, #ieWin, #dosWin, #readmeWin, #mineWin, #gameWin, #qqWin, #qqChatWin { left: 0; right: 0; }
   .qq-ch-side { display: none; }
   .fm-frame { height: auto; min-height: 62vh; }
   /* 任务栏避让 iPhone 底部手势条，并给「开始」按钮留触摸高度 */
@@ -3271,9 +3273,12 @@ document.querySelectorAll('[data-drag]').forEach(function (bar) {
     var ox = e.clientX - rect.left;
     var oy = e.clientY - rect.top;
     win.style.transform = 'none';
+    /* 手机上页面本身可滚动：clientX/Y 是视口坐标，而窗口的 left/top 相对文档，
+       必须把抓取时的滚动量补回去，否则滚动后拖拽会错位（桌面端滚动量为 0，不受影响） */
+    var sx0 = window.scrollX, sy0 = window.scrollY;
     function mv(ev) {
-      var x = Math.min(Math.max(ev.clientX - ox, 40 - rect.width), window.innerWidth - 40);
-      var y = Math.min(Math.max(ev.clientY - oy, 0), window.innerHeight - 40);
+      var x = Math.min(Math.max(ev.clientX - ox + sx0, 40 - rect.width), sx0 + document.documentElement.clientWidth - 40);
+      var y = Math.min(Math.max(ev.clientY - oy + sy0, 0), document.documentElement.scrollHeight - 40);
       win.style.left = x + 'px';
       win.style.top = y + 'px';
     }
@@ -3380,9 +3385,11 @@ document.querySelectorAll('.win95.appwin, .win95.narrowwin').forEach(function (w
     window.addEventListener('pointerup', up);
     window.addEventListener('pointercancel', up);
   });
-  /* 最大化状态下禁拖（真 98 是拖动即还原，这里从简） */
+  /* 最大化状态下拖动 = 先还原再跟手（真 98 行为，不再是"禁拖"）。
+     手机端窗口首次打开会自动最大化，若继续禁拖，手机上窗口就永远挪不动。
+     这里在捕获阶段把还原做掉，随后的正常拖拽逻辑接管（此时已不处于 maxed）。 */
   bar.addEventListener('pointerdown', function (e) {
-    if (win.classList.contains('maxed') && !near(e.target, 'button')) e.stopImmediatePropagation();
+    if (win.classList.contains('maxed') && !near(e.target, 'button')) maxWin(win);
   }, true);
 });
 
@@ -6591,6 +6598,7 @@ const PAGE = [
   '      <button id="viewerPrev" type="button">◀ 上一个</button>',
   '      <a id="viewerDl" class="btn-like" download>下载</a>',
   '      <button id="viewerNext" type="button">下一个 ▶</button>',
+  '      <button id="viewerCloseFoot" type="button">关闭</button>',
   '    </div>',
   '  </div>',
   '</div>',
@@ -7110,6 +7118,9 @@ body.embed .window{
   display:flex;flex-direction:column;
 }
 body.embed .titlebar{display:none}
+/* 预览浮层的标题栏不能跟着一起藏：右上角的 ✕ 是预览的出口之一，
+   藏了它，视频/图片预览在内嵌窗口里就没有任何关闭入口（手机上尤其致命）。 */
+body.embed .viewer .titlebar{display:flex}
 body.embed .footer{display:none}
 body.embed .win-body{
   flex:1;min-height:0;overflow-y:auto;
@@ -7529,6 +7540,23 @@ const APP_JS = `
   $('viewerClose').addEventListener('click', closeViewer);
   $('viewerPrev').addEventListener('click', function () { stepViewer(-1); });
   $('viewerNext').addEventListener('click', function () { stepViewer(1); });
+  $('viewerCloseFoot').addEventListener('click', closeViewer);
+  /* 双击 / 双触关闭：视频、图片等内容可能占满整个预览区（内嵌窗口里更是如此），
+     必须保证「双击内容本身」也能关掉预览，否则内容一撑满就找不到出口。
+     自行计时判定（350ms 内同位置两次按下），不依赖 dblclick——
+     iOS Safari 在部分缩放设置下根本不发 dblclick。 */
+  (function doubleTapToClose() {
+    var last = 0, lx = 0, ly = 0;
+    viewerBody.addEventListener('pointerdown', function (e) {
+      var now = Date.now();
+      if (now - last < 350 && Math.abs(e.clientX - lx) < 48 && Math.abs(e.clientY - ly) < 48) {
+        last = 0;
+        closeViewer();
+        return;
+      }
+      last = now; lx = e.clientX; ly = e.clientY;
+    });
+  })();
   viewer.addEventListener('click', function (e) {
     if (e.target === viewer) closeViewer();
   });
