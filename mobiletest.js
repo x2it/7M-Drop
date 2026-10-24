@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* 手机视口验收：窗口拖拽 + 预览关闭（双击 / 页脚 / 标题栏 ✕） */
+/* 手机视口验收：窗口拖拽 + 预览关闭（双击 / 页脚 / 标题栏 ✕）+ 视频全屏（⛶ 按钮） */
 'use strict';
 const { spawn } = require('child_process');
 const http = require('http'), crypto = require('crypto'), net = require('net'), fs = require('fs'), path = require('path');
@@ -107,6 +107,36 @@ function ok(name, cond, extra) { if (cond) { pass++; console.log('  ✓ ' + name
   const closedByX = await ev(`(function(){var d=document.querySelector('#fmFrame').contentDocument; return d.getElementById('viewer').hidden;})()`);
   ok('标题栏 ✕ 可关闭预览', closedByX === true);
   await shot('mob-3-closed.png');
+
+  /* ── 5) 视频预览全屏（⛶ 按钮：真全屏 API / iOS 原生 / CSS 兜底三层） ── */
+  await ev(`(function(){var d=document.querySelector('#fmFrame').contentDocument; var rows=d.querySelectorAll('.list li');
+    for(var i=0;i<rows.length;i++){ if(rows[i].textContent.indexOf('视频')>=0){ rows[i].click(); return; } } rows[0].click();})()`);
+  await sleep(1200);
+  const fsStart = JSON.parse(await ev(`(function(){var d=document.querySelector('#fmFrame').contentDocument;
+    return JSON.stringify({ hasFs:!!d.getElementById('viewerFs'), fsText:d.getElementById('viewerFs').textContent,
+      video:!!d.querySelector('#viewerBody video') });})()`));
+  ok('视频预览带全屏按钮 ⛶', fsStart.hasFs && fsStart.video);
+
+  await ev(`(function(){var d=document.querySelector('#fmFrame').contentDocument; d.getElementById('viewerFs').click();})()`);
+  await sleep(500);
+  const fsOn = JSON.parse(await ev(`(function(){var d=document.querySelector('#fmFrame').contentDocument;
+    var dlg=d.querySelector('.viewer-dlg'); var r=dlg.getBoundingClientRect();
+    return JSON.stringify({ full:!!document.fullscreenElement, isFull:dlg.classList.contains('is-full'),
+      glyph:d.getElementById('viewerFs').textContent, w:Math.round(r.width), h:Math.round(r.height) });})()`));
+  // 真全屏（fullscreenElement）或 CSS 兜底（is-full）下，对话框都应铺满整屏
+  const filled = fsOn.full || fsOn.isFull || (fsOn.w >= 395 && fsOn.h >= 845);
+  ok('点 ⛶ 进入全屏并铺满视口', filled, JSON.stringify(fsOn));
+  ok('全屏态按钮变为退出态 ⤡', fsOn.glyph === '⤡');
+
+  await ev(`(function(){var d=document.querySelector('#fmFrame').contentDocument; d.getElementById('viewerFs').click();})()`);
+  await sleep(500);
+  const fsOff = JSON.parse(await ev(`(function(){var d=document.querySelector('#fmFrame').contentDocument;
+    return JSON.stringify({ full:!!document.fullscreenElement, isFull:d.querySelector('.viewer-dlg').classList.contains('is-full'),
+      glyph:d.getElementById('viewerFs').textContent });})()`));
+  ok('再点 ⛶ 退出全屏', !fsOff.full && !fsOff.isFull && fsOff.glyph === '⛶', JSON.stringify(fsOff));
+
+  await ev(`(function(){var d=document.querySelector('#fmFrame').contentDocument; d.getElementById('viewerClose').click();})()`);
+  await sleep(300);
 
   console.log('手机端验收: ' + pass + ' 通过 / ' + fail + ' 失败');
   ws.close(); chrome.kill();
