@@ -510,11 +510,10 @@ async function setVal(sel, v) {
   for (let i = 1; i < samples.length; i++) if (samples[i] > samples[i - 1]) grew = true;
   ok('输入框在真实逐字增长（宏真的在打字）', grew, JSON.stringify(samples));
 
-  /* 用户接管：真的按键 → 立即暂停并明说 */
+  /* 用户接管：真的按键 → 立即暂停并明说（聊天窗无播放按钮，靠真实键盘接管） */
   await evaluate(`(function(){var i=document.getElementById('qqIn'); i.focus(); i.dispatchEvent(new KeyboardEvent('keydown',{key:'a',bubbles:true}));})()`);
   await sleep(400);
-  ok('用户一按键自动播放即暂停', await evaluate(`document.getElementById('qqPlayBtn').disabled===false && document.getElementById('qqPauseBtn').disabled===true`));
-  ok('暂停有诚实提示', await evaluate(`/已暂停自动播放/.test(document.getElementById('qqLog').textContent)`));
+  ok('用户一按键自动播放即暂停', await evaluate(`/已接管输入/.test(document.getElementById('qqLog').textContent)`));
 
   /* 真实发送 → 兜底回复；输入框清空 */
   await evaluate(`(function(){var i=document.getElementById('qqIn'); i.value='周末一起去烫个头？'; i.dispatchEvent(new Event('input',{bubbles:true}));})()`);
@@ -523,25 +522,22 @@ async function setVal(sel, v) {
   ok('我的消息真实入流（右侧气泡）', await evaluate(`document.querySelectorAll('#qqLog .qq-row.me').length`) >= 1);
   ok('输入框发送后清空', await evaluate(`document.getElementById('qqIn').value`) === '');
 
-  /* 重播：二次确认后真的重播 */
-  await evaluate(`document.getElementById('qqReplayBtn').click()`);
-  await sleep(150);
-  ok('重播需二次确认（按钮变形）', await evaluate(`document.getElementById('qqReplayBtn').textContent`) === '再点一次确认');
-  await evaluate(`document.getElementById('qqReplayBtn').click()`);
-  ok('二次确认后真的重播', !!await waitFor(`/家族今晚还聚会吗/.test(document.getElementById('qqLog').textContent)`, 8000, '重播首条'));
+  /* 重播：从主菜单「重播对话」重头再演（聊天窗不放任何播放按钮，故无二次确认） */
+  await evaluate(`document.getElementById('qqReplayRow').click()`);
+  ok('重播从头再演（首条好友消息重现）', !!await waitFor(`/家族今晚还聚会吗/.test(document.getElementById('qqLog').textContent)`, 8000, '重播首条'));
 
-  /* 接得上剧本 → 剧情按剧本继续（不是兜底） */
-  await evaluate(`document.getElementById('qqPauseBtn').click()`);
-  await sleep(300);
+  /* 接得上剧本 → 剧情按剧本继续（先按任意键暂停自动播放，再发剧本原句） */
+  await evaluate(`(function(){var i=document.getElementById('qqIn'); i.focus(); i.dispatchEvent(new KeyboardEvent('keydown',{key:'a',bubbles:true}));})()`);
+  await sleep(200);
   await evaluate(`(function(){var i=document.getElementById('qqIn'); i.value='没忘。老地方，网吧二楼包间，八点是吧'; i.dispatchEvent(new Event('input',{bubbles:true}));})()`);
   await evaluate(`document.getElementById('qqSendBtn').click()`);
   ok('用户说出剧本原句 → 对方按剧本回应', !!await waitFor(`/新族规/.test(document.getElementById('qqLog').textContent)`, 8000, '剧本后续'));
   ok('回应的是下一句剧本', await evaluate(`/统一换火星文头像/.test(document.getElementById('qqLog').textContent)`));
 
-  /* 单步：只演一条 */
-  await evaluate(`document.getElementById('qqStepBtn').click()`);
-  ok('单步播了我方下一条台词', !!await waitFor(`(function(){var rows=document.querySelectorAll('#qqLog .qq-row.me'); for(var i=0;i<rows.length;i++) if(/头像上周刚换/.test(rows[i].textContent)) return true; return false;})()`, 8000, '单步'));
-  ok('单步不会接着播对方的台词', await evaluate(`!/离子烫/.test(document.getElementById('qqLog').textContent)`));
+  /* 单步播放已从聊天窗移除（那是假 UI）：改验聊天窗工具栏只剩 QQ2008 真实存在的按钮 */
+  ok('聊天窗工具栏无播放类假按钮', await evaluate(`!document.getElementById('qqPlayBtn') && !document.getElementById('qqPauseBtn') && !document.getElementById('qqStepBtn') && !document.getElementById('qqReplayBtn') && !document.getElementById('qqClearBtn')`));
+  ok('聊天窗工具栏保留字体/表情两个真实按钮', await evaluate(`!!document.getElementById('qqFontBtn') && !!document.getElementById('qqFaceBtn')`));
+  ok('主菜单含「重播对话」入口', await evaluate(`!!document.getElementById('qqReplayRow')`));
 
   /* 未读 + 托盘闪动 + 任务栏闪动（切走会话后消息才到达 → 真实未读） */
   await evaluate(`(function(){var i=document.getElementById('qqIn'); i.value='在吗'; i.dispatchEvent(new Event('input',{bubbles:true}));})()`);
@@ -561,7 +557,7 @@ async function setVal(sel, v) {
   ok('唤回后任务栏按钮停止闪动', await evaluate(`!document.getElementById('qqWin')._taskBtn.classList.contains('flash')`));
   await evaluate(`document.querySelector('.qq-f[data-f="f0"]').click()`);
   await sleep(600);
-  await evaluate(`document.getElementById('qqPauseBtn').click()`);
+  await evaluate(`(function(){var i=document.getElementById('qqIn'); i.focus(); i.dispatchEvent(new KeyboardEvent('keydown',{key:'a',bubbles:true}));})()`);
   await sleep(200);
   ok('读过之后未读清零', await evaluate(`!document.querySelector('.qq-f[data-f="f0"] .qq-badge')`));
   ok('读过之后托盘停止闪动', await evaluate(`!document.getElementById('qqTray').classList.contains('unread')`));

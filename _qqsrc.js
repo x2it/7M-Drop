@@ -248,6 +248,7 @@
     sound: true,
     status: 'online',   // online | hidden（隐身：暂停派发新消息）
     cur: null,          // 当前打开的好友 id
+    lastCur: null,      // 最近打开过的好友 id（聊天窗关了也能重播）
     chats: {},          // id -> { pos, msgs: [{w,who,text,t}] }
     unread: {},         // id -> 未读数（真实收到且没看过的）
     presence: {},       // id -> 是否在线（头像/计数/派发候选都用真值）
@@ -503,7 +504,7 @@
     var rec = chatRec(state.cur);
     var log = $('qqLog');
     if (!rec.msgs.length) {
-      log.innerHTML = '<div class="qq-empty">还没有聊天记录。点 ▶ 播放，或自己说点什么。</div>';
+      log.innerHTML = '<div class="qq-empty">还没有聊天记录。打开会话即会自动「演」出来，或自己说点什么。</div>';
       lastDay = '';
       return;
     }
@@ -562,33 +563,25 @@
     return null;
   }
 
-  /* ─────────── 九、自动播放宏（真实逐字输入 + 真实点击发送） ─────────── */
-  function macroOn() { return state.playing || state.stepping; }
-  function syncCtrl() {
-    $('qqPlayBtn').disabled = state.playing;
-    $('qqPauseBtn').disabled = !state.playing;
-    $('qqStepBtn').disabled = state.playing;
-  }
+  /* ─────────── 九、自动播放宏（打开会话即真实逐字「演」出来，聊天窗里不放任何播放按钮） ─────────── */
+  function macroOn() { return state.playing; }
   function play() {
     if (state.playing) return;
     if (!state.cur) return;
     var f = friendById(state.cur);
     if (chatRec(f.id).pos >= f.script.length) {
-      hint('这部剧已经播完了。可以 ↺ 重播，或自己接着说。');
+      hint('这部剧已经看完了。可在面板主菜单「重播对话」再看一遍，或自己接着说。');
       return;
     }
     state.playing = true;
-    syncCtrl();
     playNext();
   }
   function pause(byUser) {
-    if (!state.playing && !state.stepping) return;
+    if (!state.playing) return;
     state.playing = false;
-    state.stepping = false;
     clearMacroTimers();
     showTyping(false);
-    syncCtrl();
-    if (byUser) hint('已暂停自动播放 —— 你可以直接输入，点 ▶ 继续');
+    if (byUser) hint('已接管输入，自动播放已暂停。');
   }
   function stopPlay() {
     pause(false);
@@ -602,8 +595,7 @@
     var entry = f.script[rec.pos];
     if (!entry) {
       state.playing = false;
-      syncCtrl();
-      hint('剧本播放完毕。可以 ↺ 重播，或自己接着说。');
+      hint('剧本播放完毕。可在面板主菜单「重播对话」再看一遍，或自己接着说。');
       return;
     }
     if (entry.f !== undefined || entry.g !== undefined) {
@@ -653,65 +645,20 @@
       after(rand(55, 130), tick);
     })();
   }
-  /* 单步：只演下一条（从当前指针开始，含没演完的那条） */
-  function step() {
+  /* 重播当前（或最近打开的）会话，从第一条台词重新「演」起。
+     入口是面板主菜单的「重播对话」，不在聊天窗里放任何假按钮。 */
+  function replayCurrent() {
+    var id = state.cur || state.lastCur;
+    if (!id || !friendById(id)) { hint('先打开一个会话，才能重播。'); return; }
     pause(false);
-    if (!state.cur) return;
-    var f = friendById(state.cur);
-    var rec = chatRec(f.id);
-    var entry = f.script[rec.pos];
-    if (!entry) { hint('剧本已经播完了。'); return; }
-    state.stepping = true;
-    syncCtrl();
-    if (entry.f !== undefined || entry.g !== undefined) {
-      friendTurn(f, entry, function () { rec.pos++; saveChat(f.id); state.stepping = false; syncCtrl(); });
-    } else {
-      myTurn(f, entry, function (sent) {
-        if (sent) { rec.pos++; saveChat(f.id); }
-        state.stepping = false;
-        syncCtrl();
-      });
-    }
-  }
-  /* 重播 / 清空：二次确认（按钮变成「再点一次确认」，3 秒后复位） */
-  var armed = null, armTimer = null;
-  function arm(btn, key, label, action) {
-    if (armed !== key) {
-      armed = key;
-      btn.textContent = '再点一次确认';
-      clearTimeout(armTimer);
-      armTimer = setTimeout(function () { armed = null; btn.textContent = label; }, 3000);
-      return;
-    }
-    armed = null;
-    btn.textContent = label;
-    action();
-  }
-  function replay() {
-    arm($('qqReplayBtn'), 'replay', '↺ 重播', function () {
-      pause(false);
-      var rec = chatRec(state.cur);
-      rec.pos = 0;
-      rec.msgs = [];
-      saveChat(state.cur);
-      lastDay = '';
-      renderLog();
-      hint('已重播。');
-      play();
-    });
-  }
-  function clearLog() {
-    arm($('qqClearBtn'), 'clear', '清空记录', function () {
-      pause(false);
-      var rec = chatRec(state.cur);
-      rec.pos = 0;
-      rec.msgs = [];
-      saveChat(state.cur);
-      state.partial = null;
-      lastDay = '';
-      renderLog();
-      hint('记录已清空。');
-    });
+    var rec = chatRec(id);
+    rec.pos = 0;
+    rec.msgs = [];
+    saveChat(id);
+    state.partial = null;
+    lastDay = '';
+    if (state.cur !== id) openChat(id);   /* 没开着就先打开（openChat 末尾会自动 play） */
+    else { renderLog(); play(); }
   }
 
   /* ─────────── 十、发送与回复引擎 ─────────── */
@@ -722,7 +669,7 @@
     var text = inp.value.replace(/^\s+|\s+$/g, '');
     if (!text || !state.cur) return;
     /* 用户真的发了消息 → 接管；宏自己点的发送不算 */
-    if (!byMacro && (state.playing || state.stepping)) pause(false);
+    if (!byMacro && state.playing) pause(false);
     state.partial = null;
     inp.value = '';
     pushMsg(state.cur, { w: 'me', text: text, t: now() });
@@ -834,9 +781,12 @@
     var m = $('qqMenu');
     m.hidden = !m.hidden;
     if (m.hidden) return;
-    var r = $('qqMenuBtn').getBoundingClientRect();
-    m.style.left = Math.max(4, Math.min(r.left, window.innerWidth - 160)) + 'px';
-    m.style.top = Math.max(4, r.top - 132) + 'px';
+    /* 菜单是窗口内的 absolute 定位：坐标必须相对窗口算。
+       此前误用视口坐标，窗口不在原点时菜单会整体飞出屏幕——真 bug，已修。 */
+    var b = $('qqMenuBtn').getBoundingClientRect();
+    var w = $('qqWin').getBoundingClientRect();
+    m.style.left = Math.max(4, Math.min(b.left - w.left, w.width - m.offsetWidth - 4)) + 'px';
+    m.style.top = Math.max(4, b.top - w.top - m.offsetHeight - 4) + 'px';
     setTimeout(function () {
       document.addEventListener('pointerdown', function once() {
         hideMenu();
@@ -962,6 +912,7 @@
     if (!friendById(id)) return;
     pause(false);          /* 切换到别的会话前，先停掉当前会话的播放 */
     state.cur = id;
+    state.lastCur = id;    /* 记住最近打开的会话，关窗后也能从主菜单重播 */
     state.unread[id] = 0;
     saveUnread();
     state.partial = null;
@@ -1071,7 +1022,6 @@
     syncSound();
     renderOnline();
     renderPanel();
-    syncCtrl();
 
     $('qqSound').addEventListener('click', toggleSound);
     $('qqState').addEventListener('change', function () {
@@ -1114,6 +1064,8 @@
     });
     $('qqMenu').addEventListener('click', function (e) { e.stopPropagation(); });
     $('qqQuitRow').addEventListener('click', function () { hideMenu(); quitQQ(); });
+    /* 重播对话：从主菜单进入，不在聊天窗里放任何假按钮 */
+    $('qqReplayRow').addEventListener('click', function () { hideMenu(); replayCurrent(); });
     /* 字体大小：真实切换（工具栏 A 按钮） */
     $('qqFontBtn').addEventListener('click', function () {
       var big = $('qqLog').classList.toggle('big');
@@ -1137,11 +1089,6 @@
          所以这里收到的每一个按键都是真人发的，无需再分辨来源。 */
       if (state.playing) pause(true);
     });
-    $('qqPlayBtn').addEventListener('click', function () { play(); });
-    $('qqPauseBtn').addEventListener('click', function () { pause(false); });
-    $('qqStepBtn').addEventListener('click', step);
-    $('qqReplayBtn').addEventListener('click', replay);
-    $('qqClearBtn').addEventListener('click', clearLog);
 
     presenceTick();
   }
