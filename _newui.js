@@ -85,6 +85,7 @@ const PAGE = [
   '  <div class="dialog viewer-dlg">',
   '    <div class="titlebar">',
   '      <span class="tb-title" id="viewerName">预览</span>',
+  '      <button id="viewerFs" class="tb-btn" type="button" aria-label="全屏" title="全屏 / 退出全屏">⛶</button>',
   '      <button id="viewerClose" class="tb-btn" type="button" aria-label="关闭">✕</button>',
   '    </div>',
   '    <div id="viewerBody" class="viewer-body"></div>',
@@ -92,6 +93,7 @@ const PAGE = [
   '      <button id="viewerPrev" type="button">◀ 上一个</button>',
   '      <a id="viewerDl" class="btn-like" download>下载</a>',
   '      <button id="viewerNext" type="button">下一个 ▶</button>',
+  '      <button id="viewerCloseFoot" type="button">关闭</button>',
   '    </div>',
   '  </div>',
   '</div>',
@@ -433,6 +435,11 @@ fieldset.panel legend{
    弹层会变成文档流里的普通块，表现为「点了没反应」。 */
 .viewer{background:rgba(0,0,0,.74);z-index:85}
 .viewer .viewer-dlg{width:min(920px,100%);height:min(88dvh,100%);will-change:transform}
+/* 全屏：真全屏 API 与 CSS 兜底都让对话框铺满视口，视频/图片随之填满；
+   标题栏 ✕ 仍浮在最上层，保证任何设备都能随时退出 */
+.viewer-dlg:fullscreen{width:100vw;height:100vh;max-width:none;max-height:none;border-width:0}
+.viewer-dlg.is-full{position:fixed;inset:0;width:100vw;height:100dvh;max-width:none;max-height:none;z-index:300;border-width:0}
+.viewer-dlg:fullscreen .viewer-body,.viewer-dlg.is-full .viewer-body{margin:0}
 .viewer-body{
   flex:1;min-height:0;background:#000;box-shadow:var(--sink);margin:3px;
   display:grid;place-items:center;overflow:auto;-webkit-overflow-scrolling:touch;
@@ -611,6 +618,9 @@ body.embed .window{
   display:flex;flex-direction:column;
 }
 body.embed .titlebar{display:none}
+/* 预览浮层的标题栏不能跟着一起藏：右上角的 ✕ 是预览的出口之一，
+   藏了它，视频/图片预览在内嵌窗口里就没有任何关闭入口（手机上尤其致命）。 */
+body.embed .viewer .titlebar{display:flex}
 body.embed .footer{display:none}
 body.embed .win-body{
   flex:1;min-height:0;overflow-y:auto;
@@ -661,6 +671,7 @@ const APP_JS = `
   var sbMode = $('sbMode'), sbLimit = $('sbLimit'), sbQuota = $('sbQuota');
 
   var viewer = $('viewer'), viewerBody = $('viewerBody'), viewerName = $('viewerName'), viewerDl = $('viewerDl');
+  var currentVideo = null;   // 当前预览里的 <video>，全屏时优先用它
   var qrModal = $('qrModal'), qrCanvas = $('qrCanvas'), qrUrl = $('qrUrl'), qrTitle = $('qrTitle');
   var sheet = $('sheet'), sheetName = $('sheetName');
 
@@ -939,6 +950,8 @@ const APP_JS = `
     document.body.style.overflow = 'hidden';
   }
   function closeViewer() {
+    if (document.fullscreenElement) { try { document.exitFullscreen(); } catch (e) {} }
+    viewerDlg.classList.remove('is-full');
     viewer.hidden = true;
     viewerBody.textContent = '';
     document.body.style.overflow = '';
@@ -957,6 +970,7 @@ const APP_JS = `
     var it = viewList[viewIndex];
     if (!it) return;
     var kind = previewKind(it);
+    currentVideo = null;
     viewerName.textContent = it.name;
     viewerDl.setAttribute('href', fileUrl(it));
     viewerDl.setAttribute('download', it.name);
@@ -975,6 +989,7 @@ const APP_JS = `
       var v = document.createElement('video');
       v.src = viewUrl(it); v.controls = true; v.autoplay = true;
       v.playsInline = true; v.setAttribute('playsinline', '');
+      currentVideo = v;
       viewerBody.appendChild(v);
     } else if (kind === 'audio') {
       var wrap = document.createElement('div');
@@ -1030,6 +1045,53 @@ const APP_JS = `
   $('viewerClose').addEventListener('click', closeViewer);
   $('viewerPrev').addEventListener('click', function () { stepViewer(-1); });
   $('viewerNext').addEventListener('click', function () { stepViewer(1); });
+  $('viewerCloseFoot').addEventListener('click', closeViewer);
+
+  /* 全屏：视频预览要能沉浸式铺满，又不丢「随时关闭」的出口。
+     三层兜底：① 标准 Fullscreen API（桌面，真·系统级全屏）；
+     ② iOS Safari 用视频原生 webkitEnterFullscreen（标准 API 在 iOS 上对普通元素无效）；
+     ③ 都不支持时退化为 CSS 兜底（对话框 fixed 铺满视口，标题栏 ✕ 仍在最上层）。 */
+  var viewerDlg = viewer.querySelector('.viewer-dlg');
+  function syncFsBtn() {
+    var on = !!(document.fullscreenElement || viewerDlg.classList.contains('is-full'));
+    $('viewerFs').textContent = on ? '⤡' : '⛶';
+    $('viewerFs').setAttribute('aria-label', on ? '退出全屏' : '全屏');
+  }
+  function exitFull() {
+    if (document.fullscreenElement) { document.exitFullscreen(); return true; }
+    if (viewerDlg.classList.contains('is-full')) { viewerDlg.classList.remove('is-full'); syncFsBtn(); return true; }
+    return false;
+  }
+  function toggleFullscreen() {
+    if (exitFull()) return;
+    if (viewerDlg.requestFullscreen) {
+      viewerDlg.requestFullscreen().catch(function () { viewerDlg.classList.add('is-full'); });
+    } else if (currentVideo && currentVideo.webkitEnterFullscreen) {
+      try { currentVideo.webkitEnterFullscreen(); } catch (e) { viewerDlg.classList.add('is-full'); }
+    } else {
+      viewerDlg.classList.add('is-full');
+    }
+    syncFsBtn();
+  }
+  $('viewerFs').addEventListener('click', toggleFullscreen);
+  document.addEventListener('fullscreenchange', syncFsBtn);
+  document.addEventListener('webkitfullscreenchange', syncFsBtn);
+  /* 双击 / 双触关闭：视频、图片等内容可能占满整个预览区（内嵌窗口里更是如此），
+     必须保证「双击内容本身」也能关掉预览，否则内容一撑满就找不到出口。
+     自行计时判定（350ms 内同位置两次按下），不依赖 dblclick——
+     iOS Safari 在部分缩放设置下根本不发 dblclick。 */
+  (function doubleTapToClose() {
+    var last = 0, lx = 0, ly = 0;
+    viewerBody.addEventListener('pointerdown', function (e) {
+      var now = Date.now();
+      if (now - last < 350 && Math.abs(e.clientX - lx) < 48 && Math.abs(e.clientY - ly) < 48) {
+        last = 0;
+        closeViewer();
+        return;
+      }
+      last = now; lx = e.clientX; ly = e.clientY;
+    });
+  })();
   viewer.addEventListener('click', function (e) {
     if (e.target === viewer) closeViewer();
   });

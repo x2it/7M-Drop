@@ -79,7 +79,7 @@
           { f: '在吗？你看了我昨晚发的那篇日志没有。' },
           { me: '看了，就是那篇深夜请允许我最后一次堕落' },
           { f: '嗯。你说，人为什么长大以后，快乐就变得这么难。' },
-          { me: '别想太多，早点睡' },
+          { me: '别想太多，早点睡', when: 'night', alt: '别想太多，先放一放' },
           { f: '睡不着的。一闭眼全是以前的事。你说喜欢的人最后怎么都变成了过客。' },
           { me: '会变才正常啊，我也变了很多' },
           { f: '你变得会安慰人了。以前的你，只会回一串省略号。' },
@@ -88,7 +88,7 @@
           { me: '小事。明天你空间留言，我第一个去踩' },
           { f: '说定了。你要第一个来，还要带一朵玫瑰。', k: ['玫瑰', '第一个', '留言'] },
           { me: '带带带，玫瑰管够' },
-          { f: '晚安，7喵。今天谢谢你。' }
+          { f: '晚安，7喵。今天谢谢你。', when: 'night', alt: '今天就聊到这。谢谢你，7喵。' }
         ],
         fallback: ['嗯……然后呢。', '你是不是也有心事。', '大人的世界，就这样吧。', '我不想懂，真的。']
       },
@@ -326,6 +326,26 @@
   function fmtTime(t) { var d = new Date(t); return p2(d.getHours()) + ':' + p2(d.getMinutes()); }
   function dayKey(t) { var d = new Date(t); return d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate(); }
   function dayLabel(t) { var d = new Date(t); return d.getFullYear() + '年' + (d.getMonth() + 1) + '月' + d.getDate() + '日'; }
+  /* 时段门槛（用户点名：没到晚上就说「晚安」显然不恰当）。
+     剧本台词可挂 when: 'night' | 'day' 与 alt（不满足时段时的中性说法）；
+     night = 21:00–05:00。用 eraDate() 取小时，年代穿越时仍按「当年今日的此刻」。 */
+  function inWhen(w) {
+    var h = eraDate().getHours();
+    if (w === 'night') return h >= 21 || h < 5;
+    if (w === 'day') return h >= 5 && h < 21;
+    return true;
+  }
+  /* 演出层替换：不满足时段时把台词换成 alt，其余字段（k 关键词等）原样保留，
+     不改 f.script 本身 —— 回复匹配引擎读到的仍是完整剧本。 */
+  function timeFit(line) {
+    if (!line || !line.when || line.alt === undefined || inWhen(line.when)) return line;
+    var out = {};
+    for (var k in line) if (Object.prototype.hasOwnProperty.call(line, k)) out[k] = line[k];
+    if (out.me !== undefined) out.me = line.alt;
+    else if (out.f !== undefined) out.f = line.alt;
+    else if (out.t !== undefined) out.t = line.alt;
+    return out;
+  }
 
   /* 经典 QQ 默认表情的真实名称；插进输入框的是早期 QQ 的文本表情代码 /微笑 */
   var FACES = ['微笑', '撇嘴', '色', '发呆', '得意', '流泪', '害羞', '闭嘴', '睡', '大哭',
@@ -592,7 +612,7 @@
     if (!state.playing || !state.cur) return;
     var f = friendById(state.cur);
     var rec = chatRec(f.id);
-    var entry = f.script[rec.pos];
+    var entry = timeFit(f.script[rec.pos]);
     if (!entry) {
       state.playing = false;
       hint('剧本播放完毕。可在面板主菜单「重播对话」再看一遍，或自己接着说。');
@@ -702,12 +722,12 @@
     var matched = false, trig = null;
     if (respIdx >= 0) {
       for (var j = respIdx - 1; j >= 0; j--) {
-        if (f.script[j].me !== undefined) { trig = f.script[j]; break; }
+        if (f.script[j].me !== undefined) { trig = timeFit(f.script[j]); break; }
       }
-      if (trig) matched = textMatch(text, trig, f.script[respIdx]);
+      if (trig) matched = textMatch(text, trig, timeFit(f.script[respIdx]));
     }
     if (matched) {
-      friendTurn(f, f.script[respIdx], function () { rec.pos = respIdx + 1; saveChat(id); });
+      friendTurn(f, timeFit(f.script[respIdx]), function () { rec.pos = respIdx + 1; saveChat(id); });
     } else {
       var line = pick(f.fallback);
       var fb = f.isGroup
@@ -857,7 +877,7 @@
              等价于「对方没等你回话就又发来一条」——这正是真实场景 */
           rec.pos = ne.i + 1;
           saveChat(fr.id);
-          deliver(fr, ne.entry);
+          deliver(fr, timeFit(ne.entry));
           sound('msg');
         }
       }
