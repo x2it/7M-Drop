@@ -1,4 +1,4 @@
-# 7M-Drop（7喵快传）· 部署一个可传文件的线上服务器
+# 7喵快传· 部署一个可传文件的线上服务器
 
 > **这份文档是写给 AI Agent 的。** 把它整份交给任意具备终端和联网能力的 Agent，
 > 它就能从零把服务跑起来，不需要用户再补充信息。
@@ -1174,7 +1174,7 @@ const HOME_PAGE = `<!DOCTYPE html>
         <span class="mu" data-mu="help">帮助(H)</span>
       </div>
       <div class="notepad">
-        <pre>7喵快传 (7M-Drop)
+        <pre>7喵快传
 ═══════════════════════════
 
 一个自托管的文件中转站，
@@ -1296,7 +1296,7 @@ const HOME_PAGE = `<!DOCTYPE html>
         <div class="dos-out" id="dosOut">Microsoft(R) Windows 98
    (C)Copyright Microsoft Corp 1981-1998.
 
-7喵快传 (7M-Drop) · 知行工作室
+7喵快传 · 知行工作室
 输入 help 查看可用命令。</div>
         <div class="dos-line"><span class="dos-prompt">C:\\&gt;</span><input id="dosIn" class="dos-in" type="text" name="dos-cmd" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" aria-label="DOS 命令"></div>
       </div>

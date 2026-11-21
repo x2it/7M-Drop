@@ -54,9 +54,9 @@ if (qqSrc.indexOf(tickQ) >= 0) fail('_qqsrc.js 含有反引号，请改用字符
 if (qqSrc.indexOf('$' + '{') >= 0) fail('_qqsrc.js 含有 ${ 组合，无法安全内联');
 const qqEsc = qqSrc.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$\{/g, '\\${');
 const qqBlock =
-  '/* ' + '═'.repeat(30) + ' 复古 QQ（仿 2008）' + '═'.repeat(30) + '\n' +
+  '/* ' + '═'.repeat(30) + ' 在线聊天 IM' + '═'.repeat(30) + '\n' +
   '   本段由 _build.js 从 _qqsrc.js 自动内联，请勿手改；\n' +
-  '   要改预设对话 / 逻辑，改 _qqsrc.js 后重跑 node _build.js。\n' +
+  '   要改聊天逻辑，改 _qqsrc.js 后重跑 node _build.js。\n' +
   '   下发路径：/home.js = HOME_JS + QQ_JS。 */\n' +
   'const QQ_JS = `' + qqEsc.trim() + '`;';
 
@@ -76,11 +76,11 @@ fs.writeFileSync(TARGET, out, 'utf8');
 // 只整段替换 QQ_JS（它的两个边界标记写死在下面的注释里）。
 (function inlineQQ() {
   let cur = fs.readFileSync(TARGET, 'utf8');
-  const QQ_HEAD = '/* ' + '═'.repeat(30) + ' 复古 QQ（仿 2008）' + '═'.repeat(30);
+  const QQ_HEAD = '/* ' + '═'.repeat(30) + ' 在线聊天 IM' + '═'.repeat(30);
   const QQ_TAIL = '\nconst HOME_PAGE_404';
   const a = cur.indexOf(QQ_HEAD);
   const b = cur.indexOf(QQ_TAIL);
-  if (a < 0 || b < 0 || b < a) fail('server.js 里找不到 QQ_JS 段边界（应为「复古 QQ」注释起到 HOME_PAGE_404 之前）');
+  if (a < 0 || b < 0 || b < a) fail('server.js 里找不到 QQ_JS 段边界（应为「在线聊天 IM」注释起到 HOME_PAGE_404 之前）');
   cur = cur.slice(0, a) + qqBlock + cur.slice(b);
   fs.writeFileSync(TARGET, cur, 'utf8');
   console.log('  内联 _qqsrc.js : ' + qqSrc.length + ' 字节 → QQ_JS');
@@ -170,7 +170,7 @@ console.log('  浏览器端脚本自检: APP_JS / QR_JS / SW_JS 语法均通过'
   try {
     new vm.Script(delivered, { filename: 'qq.js' });
   } catch (e) {
-    fail('QQ_JS 求值后不是合法 JS —— QQ 功能会整块静默失效。\n        ' + String(e.stack).split('\n').slice(0, 4).join('\n        '));
+    fail('QQ_JS 求值后不是合法 JS —— IM 功能会整块静默失效。\n        ' + String(e.stack).split('\n').slice(0, 4).join('\n        '));
   }
   // 合并下发后整体再解析一遍：两个脚本拼接处不能有语法冲突
   const home = (function () {
@@ -187,7 +187,7 @@ console.log('  浏览器端脚本自检: APP_JS / QR_JS / SW_JS 语法均通过'
   } catch (e) {
     fail('HOME_JS + QQ_JS 合并后不是合法 JS。\n        ' + String(e.stack).split('\n').slice(0, 4).join('\n        '));
   }
-  console.log('  复古 QQ 脚本自检: QQ_JS 语法通过 (' + delivered.length + ' 字节下发)');
+  console.log('  在线聊天 IM 脚本自检: QQ_JS 语法通过 (' + delivered.length + ' 字节下发)');
 })();
 
 console.log('构建完成');

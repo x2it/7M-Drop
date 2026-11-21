@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* 手机视口验收：窗口拖拽 + 预览关闭（双击 / 页脚 / 标题栏 ✕）+ 视频全屏（⛶ 按钮） */
+/* 手机视口验收：窗口拖拽 + 预览关闭（双击 / 页脚 / 标题栏 ✕）+ 视频全屏（□ 按钮） */
 'use strict';
 const { spawn } = require('child_process');
 const http = require('http'), crypto = require('crypto'), net = require('net'), fs = require('fs'), path = require('path');
@@ -39,6 +39,9 @@ function ok(name, cond, extra) { if (cond) { pass++; console.log('  ✓ ' + name
   /* ── 1) 手机视口下拖拽「我的电脑」窗口标题栏 ── */
   await ev(`(function(){var i=document.querySelector('.dicon[data-app="pc"]'); i.click(); i.click();})()`);
   await sleep(900);
+  /* 先还原（手机上窗口打开即 maxed，left:0!important 钉死，水平拖拽无从谈起），
+     再把窗口挪到 60px，给水平拖拽留出空间 */
+  await ev(`(function(){var w=document.getElementById('pcWin'); w.classList.remove('maxed'); w.style.left='60px'; w.style.top='300px'; return 1;})()`);
   const dragInfo = JSON.parse(await ev(`(function(){
     var win = document.getElementById('pcWin');
     var bar = win.querySelector('.titlebar');
@@ -50,9 +53,11 @@ function ok(name, cond, extra) { if (cond) { pass++; console.log('  ✓ ' + name
     for (var i=1;i<=8;i++){ window.dispatchEvent(new PointerEvent('pointermove', {bubbles:true, pointerId:1, clientX:sx-15*i, clientY:sy-30*i, isPrimary:true})); }
     window.dispatchEvent(new PointerEvent('pointerup', {bubbles:true, pointerId:1, isPrimary:true}));
     var r2 = win.getBoundingClientRect();
-    return JSON.stringify({ moveLeftPx: Math.round(r.x - r2.x), moveUpPx: Math.round(r.y - r2.y) });
+    return JSON.stringify({ moveLeftPx: Math.round(r.x - r2.x), moveUpPx: Math.round(r.y - r2.y), leftPx: Math.round(r2.x) });
   })()`));
-  ok('手机端窗口可拖拽（左移>80px）', dragInfo.moveLeftPx > 80, '实际左移 ' + dragInfo.moveLeftPx + 'px');
+  /* 窄屏设计决策：窗口占 96vw，水平方向锁在屏内（拖不出右缘，状态栏/关闭钮
+     永远可达），垂直方向仍可自由拖动 —— 断言随设计更新 */
+  ok('手机端窗口可拖拽（左移>40px 且不出屏）', dragInfo.moveLeftPx > 40 && dragInfo.leftPx >= -1, '左移 ' + dragInfo.moveLeftPx + 'px, left=' + dragInfo.leftPx);
   ok('手机端窗口可拖拽（上移>150px）', dragInfo.moveUpPx > 150, '实际上移 ' + dragInfo.moveUpPx + 'px');
   await shot('mob-1-drag.png');
 
@@ -65,8 +70,10 @@ function ok(name, cond, extra) { if (cond) { pass++; console.log('  ✓ ' + name
     await sleep(500);
   }
   if (!rowsN) throw new Error('文件列表为空');
-  await ev(`(function(){var d=document.querySelector('#fmFrame').contentDocument; var rows=d.querySelectorAll('.list li'); rows[0].click();})()`);
-  await sleep(1200);
+  /* 优先点视频行（全屏按钮为视频预览设计）；没有视频再点第一行 */
+  await ev(`(function(){var d=document.querySelector('#fmFrame').contentDocument; var rows=d.querySelectorAll('.list li'); var pick=rows[0];
+    for (var i=0;i<rows.length;i++){ var n=(rows[i].querySelector('.fname')||{}).textContent||''; if(/\\.(mp4|webm|mov|m4v|mkv)$/i.test(n)){ pick=rows[i]; break; } }
+    pick.click();})()`);  await sleep(1200);
 
   const v1 = JSON.parse(await ev(`(function(){var d=document.querySelector('#fmFrame').contentDocument;
     var v=d.getElementById('viewer'); if(!v) return '{"open":false}';
@@ -75,11 +82,19 @@ function ok(name, cond, extra) { if (cond) { pass++; console.log('  ✓ ' + name
       titlebarVisible: !!t && t.getBoundingClientRect().height>0,
       closeBtnVisible: !!d.getElementById('viewerClose') && d.getElementById('viewerClose').getBoundingClientRect().height>0,
       footCloseExists: !!d.getElementById('viewerCloseFoot'),
+      footCount: foot ? foot.querySelectorAll('button,a').length : 0,
+      footWrap: (function(){ if(!foot) return true; var w=false; foot.querySelectorAll('button,a').forEach(function(b){ if(b.scrollWidth>b.clientWidth+1) w=true; }); return w; })(),
+      footSameWidth: (function(){ if(!foot) return false; var ws=[]; foot.querySelectorAll('button,a').forEach(function(b){ ws.push(Math.round(b.getBoundingClientRect().width)); }); return ws.length>0 && ws.every(function(x){ return x===ws[0]; }); })(),
+      footWidths: (function(){ if(!foot) return []; var ws=[]; foot.querySelectorAll('button,a').forEach(function(b){ ws.push(Math.round(b.getBoundingClientRect().width)); }); return ws; })(),
       videoFills: (function(){var b=v.querySelector('.viewer-body'); return b? b.getBoundingClientRect().height>200:false;})() });})()`));
   ok('预览已打开且视频撑满主体', v1.open && v1.videoFills);
   ok('内嵌预览标题栏可见（根因修复）', v1.titlebarVisible);
   ok('标题栏 ✕ 关闭按钮可见', v1.closeBtnVisible);
-  ok('页脚「关闭」按钮存在', v1.footCloseExists);
+  /* 底部按钮区不再重复提供「关闭」：标题栏 ✕ 已负责关闭，
+     底部只留「上一个 / 下载 / 下一个」三个等宽动作 */
+  ok('页脚无重复「关闭」按钮', !v1.footCloseExists);
+  ok('页脚恰好 3 个按钮', v1.footCount === 3, '实际 ' + v1.footCount);
+  ok('页脚按钮等宽不换行', v1.footSameWidth && !v1.footWrap, JSON.stringify(v1.footWidths));
   await shot('mob-2-video.png');
 
   /* ── 2) 双击视频区域关闭 ── */
@@ -93,11 +108,11 @@ function ok(name, cond, extra) { if (cond) { pass++; console.log('  ✓ ' + name
   await ev(`(function(){var d=document.querySelector('#fmFrame').contentDocument; d.querySelectorAll('.list li')[0].click();})()`);
   await sleep(800);
 
-  /* ── 3) 页脚「关闭」按钮 ── */
-  await ev(`(function(){var d=document.querySelector('#fmFrame').contentDocument; d.getElementById('viewerCloseFoot').click();})()`);
+  /* ── 3) 页脚「下一个」可用（底部只保留三个动作） ── */
+  await ev(`(function(){var d=document.querySelector('#fmFrame').contentDocument; var b=d.getElementById('viewerNext'); if(b) b.click();})()`);
   await sleep(300);
-  const closedByFoot = await ev(`(function(){var d=document.querySelector('#fmFrame').contentDocument; return d.getElementById('viewer').hidden;})()`);
-  ok('页脚「关闭」按钮可关闭预览', closedByFoot === true);
+  const footNextOk = await ev(`(function(){var d=document.querySelector('#fmFrame').contentDocument; var v=d.getElementById('viewer'); return v && !v.hidden;})()`);
+  ok('页脚「下一个」可切换文件', footNextOk === true);
 
   /* ── 4) 标题栏 ✕ ── */
   await ev(`(function(){var d=document.querySelector('#fmFrame').contentDocument; d.querySelectorAll('.list li')[1].click();})()`);
@@ -108,32 +123,35 @@ function ok(name, cond, extra) { if (cond) { pass++; console.log('  ✓ ' + name
   ok('标题栏 ✕ 可关闭预览', closedByX === true);
   await shot('mob-3-closed.png');
 
-  /* ── 5) 视频预览全屏（⛶ 按钮：真全屏 API / iOS 原生 / CSS 兜底三层） ── */
-  await ev(`(function(){var d=document.querySelector('#fmFrame').contentDocument; var rows=d.querySelectorAll('.list li');
-    for(var i=0;i<rows.length;i++){ if(rows[i].textContent.indexOf('视频')>=0){ rows[i].click(); return; } } rows[0].click();})()`);
+  /* ── 5) 视频预览全屏（□ 按钮：真全屏 API / iOS 原生 / CSS 兜底三层） ── */
+  await ev(`(function(){var d=document.querySelector('#fmFrame').contentDocument; var rows=d.querySelectorAll('.list li'); var pick=rows[0];
+    for(var i=0;i<rows.length;i++){ var n=(rows[i].querySelector('.fname')||{}).textContent||''; if(/\\.(mp4|webm|mov|m4v|mkv)$/i.test(n)){ pick=rows[i]; break; } }
+    pick.click();})()`);
   await sleep(1200);
   const fsStart = JSON.parse(await ev(`(function(){var d=document.querySelector('#fmFrame').contentDocument;
     return JSON.stringify({ hasFs:!!d.getElementById('viewerFs'), fsText:d.getElementById('viewerFs').textContent,
       video:!!d.querySelector('#viewerBody video') });})()`));
-  ok('视频预览带全屏按钮 ⛶', fsStart.hasFs && fsStart.video);
+  ok('视频预览带全屏按钮 □', fsStart.hasFs && fsStart.video);
 
   await ev(`(function(){var d=document.querySelector('#fmFrame').contentDocument; d.getElementById('viewerFs').click();})()`);
   await sleep(500);
   const fsOn = JSON.parse(await ev(`(function(){var d=document.querySelector('#fmFrame').contentDocument;
     var dlg=d.querySelector('.viewer-dlg'); var r=dlg.getBoundingClientRect();
+    var fs=d.getElementById('viewerFs');
     return JSON.stringify({ full:!!document.fullscreenElement, isFull:dlg.classList.contains('is-full'),
-      glyph:d.getElementById('viewerFs').textContent, w:Math.round(r.width), h:Math.round(r.height) });})()`));
+      iconFull:fs.classList.contains('is-full'), glyph:fs.textContent, w:Math.round(r.width), h:Math.round(r.height) });})()`));
   // 真全屏（fullscreenElement）或 CSS 兜底（is-full）下，对话框都应铺满整屏
   const filled = fsOn.full || fsOn.isFull || (fsOn.w >= 395 && fsOn.h >= 845);
   ok('点 ⛶ 进入全屏并铺满视口', filled, JSON.stringify(fsOn));
-  ok('全屏态按钮变为退出态 ⤡', fsOn.glyph === '⤡');
+  /* 全屏按钮现在是 CSS 图标（展开↔还原），用 .is-full 类判定，不再看文本字形 */
+  ok('全屏态按钮变为退出态（is-full 类）', fsOn.iconFull === true, JSON.stringify(fsOn));
 
   await ev(`(function(){var d=document.querySelector('#fmFrame').contentDocument; d.getElementById('viewerFs').click();})()`);
   await sleep(500);
   const fsOff = JSON.parse(await ev(`(function(){var d=document.querySelector('#fmFrame').contentDocument;
     return JSON.stringify({ full:!!document.fullscreenElement, isFull:d.querySelector('.viewer-dlg').classList.contains('is-full'),
-      glyph:d.getElementById('viewerFs').textContent });})()`));
-  ok('再点 ⛶ 退出全屏', !fsOff.full && !fsOff.isFull && fsOff.glyph === '⛶', JSON.stringify(fsOff));
+      iconFull:d.getElementById('viewerFs').classList.contains('is-full') });})()`));
+  ok('再点退出全屏（is-full 类移除）', !fsOff.full && !fsOff.isFull && !fsOff.iconFull, JSON.stringify(fsOff));
 
   await ev(`(function(){var d=document.querySelector('#fmFrame').contentDocument; d.getElementById('viewerClose').click();})()`);
   await sleep(300);

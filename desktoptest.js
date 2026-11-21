@@ -245,10 +245,15 @@ async function setVal(sel, v) {
   const ieHomeRes = await httpCode('/ie-home');
   ok('IE 主页走真实端点（srcdoc 继承 CSP 会拦内联样式，全站 CSP 不放宽）',
     ieHomeRes.code === 200 &&
-    /a\.big\{display:block/.test(ieHomeRes.body) &&
+    /\.lnk\{display:block/.test(ieHomeRes.body) &&
     /html\{scrollbar-width:none\}/.test(ieHomeRes.body) &&
     /unsafe-inline/.test(ieHomeRes.headers['content-security-policy'] || '') &&
     !/setAttribute\('srcdoc', ?IE_HOME_HTML\)/.test(home.body));
+  ok('IE 主页为链接列表（Win98 风格），官网只出现一次',
+    (ieHomeRes.body.match(/class="lnk"/g) || []).length === 2 &&
+    !/class="big"/.test(ieHomeRes.body) &&
+    (ieHomeRes.body.match(/官网/g) || []).length === 1 &&
+    ieHomeRes.body.indexOf('官方网站') < 0);
   ok('IE 主页是知行工作室真实站点（无假域名）',
     ieHomeRes.body.indexOf('知行工作室') >= 0 &&
     ieHomeRes.body.indexOf('w3b.pub') >= 0 &&
@@ -263,7 +268,7 @@ async function setVal(sel, v) {
   ok('扫雷菜单含三档难度', /data-act="lv1"/.test(home.body) && /data-lv="16,16,40"/.test(home.body) && /data-lv="30,16,99"/.test(home.body));
   ok('最高分按难度独立存储', /mines95best-' \+ c \+ '-' \+ r \+ '-' \+ m/.test(home.body));
   ok('SW 缓存版本化（非硬编码 v1，修「装完永远旧版」）',
-    /VERSION = '__BUILD_ID__'/.test(sw.body) || /VERSION = '\d{10,}'/.test(sw.body),
+    /VERSION = '__BUILD_ID__'/.test(sw.body) || /VERSION = '[0-9a-f]{10,}'/.test(sw.body),
     (sw.body.match(/var VERSION = '([^']*)'/) || [])[1]);
   ok('manifest 带快手捷方式（Android 长按图标）', /shortcuts/.test(JSON.stringify(JSON.parse(man.body))));
   ok('各窗口「帮助」按应用分派（不再全弹「关于记事本」）',
@@ -627,7 +632,7 @@ async function setVal(sel, v) {
   await sleep(700);
   ok('Guest 免密登录成功', await evaluate(`document.getElementById('loginWin').hidden`) === true);
   ok('Guest 打开我的电脑窗口', await evaluate(`!document.getElementById('pcWin').hidden`));
-  ok('Guest 状态栏标注访客权限', await evaluate(`/访客权限/.test(document.getElementById('fmStatus').textContent)`));
+  ok('Guest 状态栏标注分享模式', await evaluate(`/分享模式/.test(document.getElementById('fmStatus').textContent)`));
   ok('我的电脑窗口内容区高度充足（≥420px）', await evaluate(`(function(){
     var f = document.querySelector('#pcWin .fm-frame');
     return !!f && f.getBoundingClientRect().height >= 420;
@@ -673,7 +678,7 @@ async function setVal(sel, v) {
   ok('正确密码进入管理模式', await evaluate(`document.getElementById('loginWin').hidden`) === true);
   const asrc = await evaluate(`document.getElementById('fmFrame').getAttribute('src')`);
   ok('管理员 iframe 指向管理口令', !!asrc && asrc.indexOf(TOKEN) >= 0, asrc);
-  ok('管理员状态栏标注管理权限', await evaluate(`/管理权限/.test(document.getElementById('fmStatus').textContent)`));
+  ok('管理员状态栏标注管理模式', await evaluate(`/管理模式/.test(document.getElementById('fmStatus').textContent)`));
   ok('管理员标签变化', await evaluate(`/管理/.test(document.getElementById('pcLabel').textContent)`));
 
   /* ── 10. 管理页在 iframe 内可用（跨文档访问，同源）── */

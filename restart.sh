@@ -10,6 +10,18 @@ TOKEN="${2:-wby6sg8pm0}"
 SHARE="${3:-guest1234}"
 DIR="$(cd "$(dirname "$0")" && pwd)"
 
+# 0) 构建自检：手改区（HOME_PAGE / HOME_CSS / HOME_JS / QQ_JS 之外的模板）
+#    改动后若不重建，模板字符串里的转义错误会让 /home.js 静默失效 ——
+#    页面照常渲染却毫无行为，比白屏更难查。这里先过一遍 _build.js 的自检，
+#    不过就不重启，免得把坏版本推上线。
+if [ -f "$DIR/_build.js" ]; then
+  if ! (cd "$DIR" && node _build.js > /tmp/build-check.log 2>&1); then
+    echo "构建自检未通过，已中止重启（避免上线静默失效的版本）:"
+    tail -12 /tmp/build-check.log
+    exit 1
+  fi
+fi
+
 # 1) 找占用该端口的进程（只认 LISTEN 状态），精确 kill
 PIDS=$(ss -tlnpH "sport = :$PORT" 2>/dev/null | grep -oP 'pid=\K[0-9]+' | sort -u)
 if [ -n "$PIDS" ]; then
