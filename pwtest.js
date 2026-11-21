@@ -80,7 +80,7 @@ function ok(n, c, e) {
   const home = await r.text();
   ok('根首页含 manifest link', /rel="manifest"/.test(home));
   const homejs = await (await fetch(BASE + '/home.js?v=5')).text();
-  ok('根 SW 注册存在（home.js 内）', /serviceWorker\.register\('\.\/sw\.js'/.test(homejs));
+  ok('根 SW 注册存在（home.js 内）', /serviceWorker\.register\((?:withSC\()?'\.\/sw\.js'/.test(homejs));
 
   /* 6. 常规回归：外壳资源仍可访问 */
   for (const p of ['/app.css', '/app.js', '/qr.js', '/favicon.ico']) {

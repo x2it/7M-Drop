@@ -69,21 +69,30 @@ const G = BASE + '/s/' + GUEST;
     guestFileId = r.json && r.json.item && r.json.item.id;
   }
 
-  // ── 关键：分享口令不能删除 ──────────────────────────────
+  // ── v2.4.28 权限模型：删除改为「仅上传者本人或管理员」（不再是 adminOnly）──
+  // 本测试不复用上传者 Cookie，故下列两种调用都属「非本人」：服务端逐条归属
+  // 校验后静默跳过，返回 200 + 空 deleted 清单，不是 403。
   if (guestFileId) {
     r = await postJSON(G + '/api/delete', { id: guestFileId });
-    ok('★ 分享口令删除被服务端拒绝 (403)', r.status === 403, 'status=' + r.status + ' body=' + r.text.slice(0, 120));
-    ok('  拒绝信息可读', r.json && /管理链接|删除/.test(r.json.error || ''), r.json && r.json.error);
+    ok('★ 非本人删除被静默跳过 (200 + 空 deleted)',
+      r.status === 200 && r.json && Array.isArray(r.json.deleted) && r.json.deleted.length === 0,
+      'status=' + r.status + ' body=' + r.text.slice(0, 120));
+    ok('  返回体为正常响应（无 error 字段）', r.json && r.json.ok === true && !r.json.error,
+      r.json && JSON.stringify(r.json).slice(0, 120));
 
     r = await req(G + '/d/' + guestFileId);
-    ok('被拒后文件仍存在（没被误删）', r.status === 200, 'status=' + r.status);
+    ok('未被误删，文件仍存在', r.status === 200, 'status=' + r.status);
 
     // 分享口令也不能删别人的文件
     const list = await req(A + '/api/list');
     const other = list.json.items.find((x) => x.id !== guestFileId);
     if (other) {
       r = await postJSON(G + '/api/delete', { id: other.id });
-      ok('★ 分享口令删除他人文件同样被拒 (403)', r.status === 403, 'status=' + r.status);
+      ok('★ 删除他人文件同样被跳过 (200 + 空 deleted)',
+        r.status === 200 && r.json && Array.isArray(r.json.deleted) && r.json.deleted.length === 0,
+        'status=' + r.status);
+      const after = await req(G + '/d/' + other.id);
+      ok('  他人文件未被误删', after.status === 200, 'status=' + after.status);
     }
   }
 

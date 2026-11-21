@@ -148,15 +148,19 @@ async function jfetch(url, opts) {
   r = await jfetch(P + '/d/' + htmlId);
   ok('HTML 下载为附件', (r.headers.get('content-disposition') || '').startsWith('attachment'));
 
-  // 10. 删除（现行权限模型：游客删除被拒绝，仅管理链接可删除）
+  // 10. 删除（v2.4.28 起权限模型：仅上传者本人或管理员可删，不再 adminOnly。
+  //     本测试不复用上传者 Cookie，故此处属「非本人删除」：服务端逐条归属校验后
+  //     静默跳过、返回空 deleted 清单，不是 403）
   r = await jfetch(P + '/api/delete', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ id: fileId }),
   });
-  ok('游客删除被拒绝 (403)', r.status === 403, 'status=' + r.status);
+  ok('非上传者删除不生效 (200 + 空 deleted)',
+    r.status === 200 && r.json && Array.isArray(r.json.deleted) && r.json.deleted.length === 0,
+    'status=' + r.status + ' deleted=' + JSON.stringify(r.json && r.json.deleted));
   r = await jfetch(P + '/d/' + fileId);
-  ok('游客删除后文件仍在 (200)', r.status === 200, 'status=' + r.status);
+  ok('未被删除，文件仍在 (200)', r.status === 200, 'status=' + r.status);
   if (ADMIN) {
     r = await jfetch(BASE + '/s/' + ADMIN + '/api/delete', {
       method: 'POST',
