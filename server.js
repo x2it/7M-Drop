@@ -188,6 +188,14 @@ if (SHARE_TOKEN.toLowerCase() === 'same') {
 // 返回 403「链接不完整」页，请求根本到不了本服务。
 const GATEWAY_SHARECODE = String(process.env.GATEWAY_SHARECODE || '').trim();
 
+// 强制分享凭据：REQUIRE_SHARECODE=1 且配置了 GATEWAY_SHARECODE 时，任何页面 / API /
+// 静态资源都必须携带有效 sharecode（?sharecode= 或网关头 x-wb-share-code），否则一律 403。
+// 用途：网关之外的直达地址（隧道域名、IP:端口）同样能被访问，缺凭据即等于对公网公开；
+// 开启后「拿到地址但没有凭据」的人看不到任何内容。默认关闭，开源默认行为不变；
+// 开启后本机命令行 / Agent 调用同样需要带凭据（/healthz 除外，留给探活）。
+const REQUIRE_SHARECODE = String(process.env.REQUIRE_SHARECODE ?? '0') === '1';
+const SHARE_GATE_ON = REQUIRE_SHARECODE && !!GATEWAY_SHARECODE;
+
 // 桌面「登录 Windows 98」的 Administrator 通行口令。
 // 与 TOKEN 是两个独立的东西：TOKEN 是 /s/<口令>/ 的路径凭据，
 // ADMIN_PASS 只是仿真桌面登录框的口令。校验一律走服务端，前端源码里不出现明文。
@@ -643,6 +651,60 @@ function withShareCode(u, sc) {
   if (!sc) return u;
   if (/[?&]sharecode=/.test(u)) return u;
   return u + (u.indexOf('?') >= 0 ? '&' : '?') + 'sharecode=' + sc;
+}
+
+/* ───── 强制分享凭据闸门（REQUIRE_SHARECODE=1 时生效）─────
+   为什么需要：配置了网关凭据的实例，如果还能从隧道域名或 IP:端口直达，
+   那么「只要知道地址」就能访问 —— 与「必须有 sharecode 才给看」相悖。
+   因此显式开启后：不带有效凭据的请求一律 403，连首页和静态资源也不例外。
+   校验通过后种一枚 HttpOnly Cookie，让页面里的 CSS/JS/API 不必每条 URL 都带参数；
+   但参数透传仍是主路径（App 预览面板 / webview / 隐私模式常拦第三方 Cookie）。 */
+const SHARE_GATE_COOKIE = '7mdsc';
+const SHARE_GATE_TTL_SEC = 7 * 24 * 3600;
+function shareGateMark() {
+  // Cookie 里存凭据摘要而非凭据本身，避免明文落在浏览器存储中
+  return crypto.createHash('sha256').update('7mdsc:' + GATEWAY_SHARECODE).digest('base64url');
+}
+function shareGateCookie() {
+  return SHARE_GATE_COOKIE + '=' + shareGateMark()
+    + '; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=' + SHARE_GATE_TTL_SEC;
+}
+function shareGatePass(req) {
+  const supplied = shareCode(req);
+  if (supplied && safeEqual(supplied, GATEWAY_SHARECODE)) return 'param';
+  const m = new RegExp('(?:^|;\\s*)' + SHARE_GATE_COOKIE + '=([^;]+)')
+    .exec(String((req.headers && req.headers.cookie) || ''));
+  if (m && safeEqual(String(m[1]), shareGateMark())) return 'cookie';
+  return '';
+}
+function shareGateDeny(req, res, pathname) {
+  const wantsJson = /\/api\//.test(pathname)
+    || /\bapplication\/json\b/.test(String((req.headers && req.headers.accept) || ''));
+  if (wantsJson) {
+    return sendJson(res, 403, {
+      ok: false,
+      code: 'sharecode_required',
+      error: '缺少分享凭据：请使用带 ?sharecode= 的完整分享链接访问',
+    });
+  }
+  const body = '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">'
+    + '<meta name="viewport" content="width=device-width,initial-scale=1">'
+    + '<title>需要分享凭据</title>'
+    + '<style>html,body{height:100%;margin:0}body{display:flex;align-items:center;'
+    + 'justify-content:center;background:#f4f4f4;font:14px/1.7 -apple-system,'
+    + '"Segoe UI",sans-serif;color:#222}.box{max-width:420px;padding:28px 32px;'
+    + 'background:#fff;border:1px solid #ddd;box-shadow:0 8px 24px rgba(0,0,0,.08)}'
+    + 'h1{margin:0 0 12px;font-size:16px}code{background:#f0f0f0;padding:1px 5px;'
+    + 'border-radius:3px;font-size:13px}</style></head><body><div class="box">'
+    + '<h1>此站点需要分享凭据</h1><p>服务未对公网公开。请通过带 '
+    + '<code>?sharecode=</code> 的分享链接进入；链接可向分享者索取。</p></div></body></html>';
+  res.writeHead(403, {
+    'Content-Type': 'text/html; charset=utf-8',
+    'Content-Length': Buffer.byteLength(body),
+    'Cache-Control': 'no-store',
+    ...SEC_BASE,
+  });
+  return res.end(body);
 }
 // 对外链接统一挂当前请求的网关凭据：无状态脚本拿到 urls 可直接访问，
 // 不必再读 meta 手工拼 ?sharecode=（P0-1）。凭据取本次请求实际生效值
@@ -8747,6 +8809,14 @@ async function handle(req, res) {
   if (pathname === '/healthz') {
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
     return res.end('ok');
+  }
+
+  // 强制凭据闸门（默认关闭）：探活之外的任何路径都要求有效 sharecode，
+  // 命中「地址被转发出去但没有凭据」的直达访问。参数/网关头首次进入时种 Cookie。
+  if (SHARE_GATE_ON) {
+    const gatePass = shareGatePass(req);
+    if (!gatePass) return shareGateDeny(req, res, pathname);
+    if (gatePass === 'param') wrapOwnerCookie(res, shareGateCookie());
   }
 
 

@@ -276,6 +276,7 @@ Win98 桌面不是「桌面端限定」——它在手机上是一等公民。**
 | `TRUST_PROXY` | `0` | 仅当反代**不在本机**且会覆写 `X-Forwarded-For` 时才设 `1` |
 | `PUBLIC_ORIGIN` | （空） | 显式声明对外域名（如 `https://example.host`）。网关/反代改写 `Host` 时必须配置，否则 `/api/meta` 的 `baseUrl` 会自报内部域名 |
 | `GATEWAY_SHARECODE` | （空） | 平台网关的分享凭据（如 WorkBuddy「发布为应用」链接里的 `?sharecode=...`）。设置后 `/api/meta` 会带 `access` 块说明，quickstart 命令自动拼好该参数；缺失时网关返回 403「链接不完整」，请求不会到达本服务 |
+| `REQUIRE_SHARECODE` | `0` | 设 `1` 且已配置 `GATEWAY_SHARECODE` 时开启强制凭据闸门：所有页面 / API / 静态资源都必须携带有效 sharecode（`?sharecode=` 或网关头），否则一律 403，用于「不让拿到地址但没凭据的人访问」。`/healthz` 探活不受限；开启后本机命令行与 Agent 调用同样需带凭据 |
 | `DATA_DIR` | `./data` | 数据目录（聊天数据落在其中的 `qq.json`） |
 
 ## 安全

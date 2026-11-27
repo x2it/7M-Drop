@@ -43,6 +43,11 @@ jobs:
       - name: 权限自测（21 项）
         run: node permtest.js http://127.0.0.1:8080 ci-admin ci-guest
 
+      # 强制凭据闸门：脚本自起两个实例（开闸 / 关闸），验证
+      # 「无 sharecode 一律 403」与「默认关闭时行为不变」
+      - name: 强制凭据闸门（15 项）
+        run: node gatetest.js
+
       - name: 大文件分片 + 完整性
         run: node bigtest.js http://127.0.0.1:8080 ci-admin 12
 
