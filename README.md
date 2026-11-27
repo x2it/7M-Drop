@@ -131,7 +131,13 @@ curl --data-binary @报告.pdf "$BASE/api/put?name=report.pdf"  # POST
 ```
 
 **所有上传接口返回同一形状**，都带 `urls.page` / `urls.direct` / `urls.inline`——
-不管走单请求还是分片，客户端都不用分支处理。
+不管走单请求还是分片，客户端都不用分支处理。这三个链接**已按本次请求自动带上网关
+`sharecode`**（若配置了 `GATEWAY_SHARECODE` 或请求携带了分享凭证），无状态脚本拿到
+即可直接访问，不必再读 meta 手工拼接。
+
+删除接口的契约：`ids` 批量删除仍返回 `{ok:true,deleted:[...]}`（部分成功照常返回清单）；
+若请求的条目**全部无权删除**，返回 `403 {ok:false,code:"not_owner",deleted:[]}`，
+与续期接口的错误码对齐，脚本可据此判断成败。
 
 [`SKILL.md`](SKILL.md) 是写给 AI Agent 的技能说明（含权限陷阱与失败对照表），
 复制到 skills 目录即可被识别。

@@ -65,7 +65,13 @@ function shellVersion() {
 /* 根页下发前把 __SHELL_V__ 占位符换成真实版本号（模板串不能提前插值：引用后置常量） */
 function homePageHtml(sc) {
   if (!HOME_PAGE_CACHED) HOME_PAGE_CACHED = HOME_PAGE.replace(/__SHELL_V__/g, shellVersion());
-  return injectShareCode(HOME_PAGE_CACHED, sc);
+  let html = injectShareCode(HOME_PAGE_CACHED, sc);
+  // 同步注入访客口令：桌面 JS 的 BOOT.guestUrl 不再依赖异步 /api/boot 才有值。
+  // 竞态根因：用户快速点「我的电脑」时 boot 接口未回，BOOT 仍是空口令 /s/，
+  // iframe 加载 /s/?embed=1 → 404 桌面壳套娃 + 「Windows 找不到 /s」弹窗。
+  // 口令本就印在启动日志、属公开分享信息，同步进页面不构成泄露。
+  html = html.replace('<head>', '<head>\n<meta name="7md-guest" content="/s/' + SHARE_TOKEN + '/">');
+  return html;
 }
 /* CSS 同样要注入版本号：页面侧「版本自愈」靠 --shell-ver 判断
    实际生效的 CSS 是不是当前版本（旧 SW 缓存住旧 CSS 时会不一致）。 */
@@ -606,6 +612,10 @@ const SEC_BASE = {
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'no-referrer',
   'X-Frame-Options': 'SAMEORIGIN',
+  // HSTS 只在 HTTPS 响应被浏览器接受，本地 HTTP 调试不受影响。
+  'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+  // 关闭不需要的浏览器能力，缩小攻击面（摄像头/麦克风/定位/支付等一概不用）。
+  'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
 };
 const SEC_CSP = "default-src 'none'; script-src 'self'; style-src 'self'; " +
   "img-src 'self' data:; media-src 'self'; frame-src 'self'; connect-src 'self'; " +
@@ -633,6 +643,15 @@ function withShareCode(u, sc) {
   if (!sc) return u;
   if (/[?&]sharecode=/.test(u)) return u;
   return u + (u.indexOf('?') >= 0 ? '&' : '?') + 'sharecode=' + sc;
+}
+// 对外链接统一挂当前请求的网关凭据：无状态脚本拿到 urls 可直接访问，
+// 不必再读 meta 手工拼 ?sharecode=（P0-1）。凭据取本次请求实际生效值
+// （shareCodeFor 兼容 query / 网关头两种透传），无网关时返回原链接。
+function publicUrls(req, token, id) {
+  const base = baseUrlFor(req, token);
+  const sc = shareCode(req) || GATEWAY_SHARECODE;
+  const j = (p) => withShareCode(base + p + id, sc);
+  return { page: j('f/'), direct: j('d/'), inline: j('v/') };
 }
 // 把 HTML 里的相对/根相对资源引用统一挂上凭证（只改 href/src，不动其它属性）
 function tagShareCode(html, sc) {
@@ -816,7 +835,8 @@ function metaPayload(P, base) {
     } : null,
     permissions: {
       canList: P.canList, canUpload: P.canUpload,
-      canDelete: P.canDelete,          // 能删「任意」文件（仅管理员）
+      canDelete: P.canDelete,          // 兼容旧客户端；语义 = 能删「任意」文件
+      canDeleteAny: P.canDelete,       // 明确命名：能删任意/他人文件（仅管理员）；自己的另按归属判定
       canManageOwn: true,              // 能改时长/续期/删除自己上传的
     },
     // 归属模型：服务端签名的设备凭证自动识别，不需要注册/登录。
@@ -948,17 +968,12 @@ async function handlePut(req, res, url, token) {
   }
   inflightBytes.delete(key);
 
-  const base = baseUrlFor(req, token);
   sendJson(res, 200, {
     ok: true,
     item: rec,
     nameRepaired,                   // true = 原文件名含无法解码的字符，已替换
     ownerToken: req.__ownerToken,   // 无 Cookie 的脚本可显式携带，管理自己上传的文件
-    urls: {
-      page: base + 'f/' + id,      // 分享给别人
-      direct: base + 'd/' + id,    // 直接下载
-      inline: base + 'v/' + id,    // 内联预览
-    },
+    urls: publicUrls(req, token, id),
   });
 }
 
@@ -1149,17 +1164,12 @@ async function handleFinish(req, res, token) {
   inflightBytes.delete(fkey);
 
   // 与 /api/put 保持一致的返回形状 —— 客户端不该因为走了分片就拿不到链接
-  const base = baseUrlFor(req, token);
   sendJson(res, 200, {
     ok: true,
     item: rec,
     nameRepaired: up.nameRepaired === true,   // init 时检测的原文件名损坏标记
     ownerToken: req.__ownerToken,
-    urls: {
-      page: base + 'f/' + id,
-      direct: base + 'd/' + id,
-      inline: base + 'v/' + id,
-    },
+    urls: publicUrls(req, token, id),
   });
 }
 
@@ -1217,16 +1227,11 @@ async function handleText(req, res, token) {
   };
   index.unshift(rec);
   await saveIndex();
-  const base = baseUrlFor(req, token);
   sendJson(res, 200, {
     ok: true,
     item: rec,
     ownerToken: req.__ownerToken,
-    urls: {
-      page: base + 'f/' + id,
-      direct: base + 'd/' + id,
-      inline: base + 'v/' + id,
-    },
+    urls: publicUrls(req, token, id),
   });
 }
 
@@ -1239,7 +1244,8 @@ function listPayload(P, req) {
     role: p.role,
     canUpload: p.canUpload,
     canList: p.canList,
-    canDelete: p.canDelete,
+    canDelete: p.canDelete,            // 兼容旧客户端（语义 = 任意删除）
+    canDeleteAny: p.canDelete,         // 明确命名，与 canManageOwn 对照
     canManageOwn: true,
     ownership: {
       mode: 'device',                 // 签名设备凭证自动识别，无需登录
@@ -1355,17 +1361,24 @@ async function handleDelete(req, res) {
   // 无权限或已不存在的条目静默跳过，不中断其余，最后统一返回删除清单。
   const ids = Array.isArray(body.ids) ? body.ids.map(String) : [String(body.id || '')];
   const deleted = [];
+  let forbidden = 0;
   for (const id of ids) {
     if (!id) continue;
     const rec = lookup(id);
     if (!rec) continue;
     // 归属：只能删自己上传的文件，管理员例外。前端藏按钮只是体验，这里是硬拦截。
-    if (!canManage(req, rec)) continue;
+    if (!canManage(req, rec)) { forbidden++; continue; }
     index = index.filter((r) => r.id !== id);
     await fsp.rm(blobPath(id), { force: true }).catch(() => {});
     deleted.push(id);
   }
   if (deleted.length) await saveIndex();
+  // 契约：一个都没删成且全是无权（非"不存在"）时，如实回 403 + ok:false，
+  // 让无状态脚本能靠状态码判断成败（P0-2）；批量里部分成功仍回 200 清单。
+  // 与 /api/renew 的 403「只能管理自己上传的文件」错误结构对齐。
+  if (!deleted.length && forbidden > 0) {
+    return sendJson(res, 403, { ok: false, error: '只能管理自己上传的文件', code: 'not_owner', deleted: [] });
+  }
   return sendJson(res, 200, { ok: true, deleted });
 }
 
@@ -4633,15 +4646,26 @@ function near(node, sel) {
   return node && typeof node.closest === 'function' ? node.closest(sel) : null;
 }
 
-/* ───────────── 启动配置（访客链接由服务端下发，前端不内嵌口令）───────────── */
-var BOOT = { guestUrl: '/s/', splitTokens: true };
+/* ───────────── 启动配置（访客链接由服务端下发）─────────────
+   首屏同步从 <meta name="7md-guest"> 读真实口令，避免异步 boot 竞态：
+   旧实现默认 '/s/'（空口令），用户快速点「我的电脑」时 boot 还没回，
+   iframe 就加载了 /s/?embed=1 → 404 桌面壳套娃 + 「Windows 找不到 /s」。
+   meta 由 homePageHtml 同步注入，一定有值；boot 接口只作增量刷新（权限等）。 */
+var _guestMeta = document.querySelector('meta[name="7md-guest"]');
+var BOOT = { guestUrl: (_guestMeta && _guestMeta.getAttribute('content')) || '/s/', splitTokens: true };
 var isAdmin = false;      // 仅内存，不写 localStorage
 var adminBase = null;
 
 fetch('/api/boot', { cache: 'no-store' })
   .then(function (r) { return r.json(); })
-  .then(function (d) { if (d && d.guestUrl) BOOT = d; })
-  .catch(function () { /* 断网时用默认值，文件服务会如实报离线 */ });
+  .then(function (d) {
+    if (d && d.guestUrl && d.guestUrl !== '/s/') {
+      // 只用 boot 的增量字段覆盖，guestUrl 保留同步值（防接口异常回退空口令）
+      d.guestUrl = BOOT.guestUrl;
+      BOOT = d;
+    }
+  })
+  .catch(function () { /* 断网时用同步注入的 meta 值，文件服务会如实报离线 */ });
 
 /* ───────────── 时钟（整分对齐，不再肉眼可见地跳秒）───────────── */
 function tickClock() {
@@ -4966,6 +4990,22 @@ function fmOpen(admin) {
   var w = $('pcWin');
   var frame = $('fmFrame');
   var base = admin && adminBase ? adminBase : BOOT.guestUrl;
+  // 防线：空口令 /s/ 是竞态残留，绝不让它进 iframe（否则 404 桌面壳套娃）。
+  // 正常口令形如 /s/<10+位>/；异常时给一次异步兜底再打开。
+  if (!admin && (!base || base === '/s/' || !/^\\/s\\/[A-Za-z0-9._-]{4,}\\/$/.test(base))) {
+    fetch('/api/boot', { cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d && d.guestUrl && /^\\/s\\/[A-Za-z0-9._-]{4,}\\/$/.test(d.guestUrl)) {
+          BOOT.guestUrl = d.guestUrl;
+          fmOpen(admin);
+        } else {
+          msgbox('提示', '文件服务暂时不可用（未取得有效分享链接）。\\n请刷新页面后重试。', 'err');
+        }
+      })
+      .catch(function () { msgbox('提示', '文件服务暂时不可用（网络异常）。\\n请刷新页面后重试。', 'err'); });
+    return;
+  }
   var url = base + '?embed=1';
   if (frame.getAttribute('src') !== url) {
     frame.setAttribute('src', url);
@@ -5749,7 +5789,13 @@ function parseAddr(v) {
     return { kind: 'web', url: s };
   }
   if (/^\\/\\//.test(s)) return { kind: 'web', url: 'https:' + s };
-  if (s.charAt(0) === '/') return { kind: 'local', url: s };
+  if (s.charAt(0) === '/') {
+    // 本站绝对路径只接受完整 /s/<口令>/（可带子路径）；裸 /s 或 /s/ 会落到
+    // 404 桌面壳并弹「Windows 找不到 /s」，这里先拦下给出如实提示。
+    var m = /^(\\/s\\/[A-Za-z0-9._-]{4,}\\/[^\\s]*)$/.exec(s);
+    if (!m) return null;
+    return { kind: 'local', url: (m[1].indexOf('embed') < 0 && m[1].indexOf('?') < 0) ? m[1] + '?embed=1' : m[1] };
+  }
   /* 域名简写：含点即为域名（口令不含点，所以两者不会混淆）
      注意：这段在 HOME_JS 模板字符串里，正则里的 \ 必须写成 \\，
      否则模板求值时转义被吃掉，正则会失效。 */
@@ -6473,7 +6519,8 @@ document.addEventListener('click', function (e) {
       }
       else if (a === 'ie-file') {
         var iw2 = ieWin || $('ieWin');
-        ieNavTo(iw2, BOOT.guestUrl);
+        // 必须带 ?embed=1：否则 iframe 里加载完整桌面页，形成「桌面套桌面」。
+        ieNavTo(iw2, BOOT.guestUrl + '?embed=1');
       }
       /* 收藏夹：外站一律经项目内置的代理渲染，不开系统浏览器 */
       else if (a === 'fav-w3b') { ieOpen(); ieNavTo($('ieWin'), 'https://w3b.pub/'); }
@@ -8781,6 +8828,11 @@ async function handle(req, res) {
     // 必须精确匹配 id，否则会把 /f/app.js 这类相对资源请求也吞成 HTML。
     if (/^\/f\/[A-Za-z0-9_-]+$/.test(rest)) {
       if (!P.canList) return notFound(res);
+      // 三端口语义一致：d/ /v/ 对不存在/已删文件已回 404，f/ 也应如此，
+      // 不能只回 200 的 SPA 壳让爬虫/监控误判文件还在（P0-3）。
+      // 前端分享链接仍指向 f/，文件存在时行为不变。
+      const fid = rest.slice(3);
+      if (!lookup(fid)) return notFound(res);
       return sendAsset(res, 'text/html; charset=utf-8', pageHtml(m[1], sc));
     }
     if (rest === '/app.css') return sendAsset(res, 'text/css; charset=utf-8', CSS);
